@@ -1,5 +1,5 @@
 import os
-
+#e78ecbdb2bd1c109bdab4c59f95cc057
 def process_data(audio_folder, midi_folder, output_folder, n_partition):
     path_pair = {}
     for song in os.listdir(midi_folder):

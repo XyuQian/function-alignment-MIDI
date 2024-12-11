@@ -199,6 +199,12 @@ class StreamingMultiheadAttention(StreamingModule):
             kv_dim = (embed_dim // num_heads) * num_kv
             out_dim += 2 * kv_dim
             in_proj = nn.Linear(embed_dim, out_dim, bias=bias, **factory_kwargs)
+            self.layers_for_finetune = {
+                "q_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs),
+                "k_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs),
+                "v_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
+            }
+
             # We try to follow the default PyTorch MHA convention, to easily compare results.
             self.in_proj_weight = in_proj.weight
             self.in_proj_bias = in_proj.bias
@@ -220,6 +226,24 @@ class StreamingMultiheadAttention(StreamingModule):
             ln_dim = embed_dim
             self.q_layer_norm = nn.LayerNorm(ln_dim)
             self.k_layer_norm = nn.LayerNorm(ln_dim)
+
+    def init_qkv(self):
+        self.q_proj = self.layers_for_finetune["q_proj"]
+        self.k_proj = self.layers_for_finetune["k_proj"]
+        self.v_proj = self.layers_for_finetune["v_proj"]
+
+        dim = len(self.in_proj_weight) // 3
+        self.q_proj.weight.data = self.in_proj_weight.data[:dim]
+        self.k_proj.weight.data = self.in_proj_weight.data[dim: 2 * dim]
+        self.v_proj.weight.data = self.in_proj_weight.data[2 * dim:]
+        if self.in_proj_bias is None:
+            self.q_proj.bias = None
+            self.k_proj.bias = None
+            self.v_proj.bias = None
+        else:
+            self.q_proj.bias.data = self.in_proj_bias.data[:dim]
+            self.k_proj.bias.data = self.in_proj_bias.data[dim: 2 * dim]
+            self.v_proj.bias.data = self.in_proj_bias.data[2 * dim:]
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         if not self.custom:
@@ -363,7 +387,10 @@ class StreamingMultiheadAttention(StreamingModule):
                     # profiling breaks that propertysomehow.
                     assert query is key, "specialized implementation"
                     assert value is key, "specialized implementation"
-                projected = nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
+                # projected = nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
+
+                projected = torch.concat([self.q_proj(query), self.k_proj(query), self.v_proj(query)], -1)
+
                 if self.kv_repeat == 1:
                     if time_dim == 2:
                         bound_layout = "b h p t d"
@@ -530,6 +557,9 @@ class StreamingTransformerLayer(nn.TransformerEncoderLayer):
         self.norm1 = create_norm_fn(norm, d_model, **factory_kwargs)  # type: ignore
         self.norm2 = create_norm_fn(norm, d_model, **factory_kwargs)  # type: ignore
 
+    def init_qkv(self):
+        self.self_attn.init_qkv()
+
     def _cross_attention_block(self, src: torch.Tensor,
                                cross_attention_src: torch.Tensor) -> torch.Tensor:
         assert self.cross_attention is not None
@@ -650,6 +680,10 @@ class StreamingTransformer(StreamingModule):
                 # backward hook inside of FSDP...
                 layer._magma_checkpointed = True  # type: ignore
                 assert layer.layer_drop == 0., "Need further checking"  # type: ignore
+
+    def init_qkv(self):
+        for layer in self.layers:
+            layer.init_qkv()
 
     def _apply_layer(self, layer, *args, **kwargs):
         method = self.checkpointing

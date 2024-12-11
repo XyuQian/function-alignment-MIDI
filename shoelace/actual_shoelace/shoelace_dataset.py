@@ -31,10 +31,9 @@ def load_data_lst(path_folder):
 
 
 class ShoelaceDataset(BaseDataset):
-    def __init__(self, path_folder, is_mono, rid, seg_sec=16, num_workers=1, use_loader=True):
+    def __init__(self, path_folder, rid, seg_sec=16, num_workers=1, use_loader=True):
         super(ShoelaceDataset, self).__init__()
         self.rid = rid
-        self.is_mono = is_mono
         self.use_loader = use_loader
         self.midi_seg_len = int(seg_sec * 50 // 16)
         files, feature_path = load_data_lst(path_folder)
@@ -82,25 +81,14 @@ class ShoelaceDataset(BaseDataset):
         audio_st = midi_st * 16
         audio_ed = midi_ed * 16
 
-        acc_data = np.reshape(self.data[fname]["acc"][midi_st: midi_ed], [-1, 3, 4])
-        mel_data = np.reshape(self.data[fname]["mel"][midi_st: midi_ed], [-1, 3, 4])
+        # acc_data = np.reshape(self.data[fname]["acc"][midi_st: midi_ed], [-1, 3, 4])
+        mel_data = self.data[fname]["mel"][midi_st: midi_ed]
 
-        # 0: full
-        # 1: mel
-        # 2: acc
-        # r = self.rng.randint(0, 3)
-        r = 1 if self.is_mono else 0
-        if r == 1:
-            acc_data = np.zeros_like(acc_data) + 512
-        elif r == 2:
-            mel_data = np.zeros_like(mel_data) + 512
 
-        tags = ["audio", "audio_mel", "audio_acc"]
-        audio_data = self.data[fname][tags[r]][audio_st: audio_ed]
-        melody_data = self.data[fname]["melody"][midi_st: midi_ed, 0]
+        audio_data = self.data[fname]["audio_mel"][audio_st: audio_ed]
+        # melody_data = self.data[fname]["melody"][midi_st: midi_ed, 0]
 
-        midi_data = np.reshape(np.stack([mel_data, acc_data], 2), [-1, 24])
-        return midi_data, audio_data, melody_data, "a melodic pop song"
+        return mel_data, audio_data
 
     def __getitem__(self, idx):
         # worker_id = get_worker_info().id if self.use_loader else 0
@@ -121,13 +109,13 @@ def worker_init_fn(worker_id):
 
 
 def collate_fn(batch):
-    midi_data = torch.from_numpy(np.stack([b[0] for b in batch], 0)).long()
+    mel_data = torch.from_numpy(np.stack([b[0] for b in batch], 0)).long()
     audio_data = torch.from_numpy(np.stack([b[1] for b in batch], 0)).long()
-    melody_data = torch.from_numpy(np.stack([b[2] for b in batch], 0)).long()
+    # melody_data = torch.from_numpy(np.stack([b[2] for b in batch], 0)).long()
     audio_data = audio_data.transpose(1, 2)
-    return {
-        "midi_seq": midi_data,
-        "melody_seq": melody_data,
-        "audio_seq": audio_data,
-        "desc": [b[3] for b in batch]
-    }
+    return [
+        {"midi_seq": mel_data},
+        # "melody_seq": melody_data,
+        {"audio_seq": audio_data},
+        # "desc": [b[3] for b in batch]
+    ]

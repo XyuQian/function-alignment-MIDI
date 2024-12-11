@@ -12,13 +12,13 @@ from the Hydra config.
 import typing as tp
 import warnings
 
+from ... import audiocraft
 import omegaconf
 import torch
-from shoelace.audiocraft import modules
 
-from shoelace.audiocraft.models.encodec import CompressionModel, EncodecModel, FlattenedCompressionModel  # noqa
-from .lm_air import LMModel
-from shoelace.audiocraft.modules.codebooks_patterns import (
+from .encodec import CompressionModel, EncodecModel, FlattenedCompressionModel  # noqa
+from .lm import LMModel
+from ..modules.codebooks_patterns import (
     CodebooksPatternProvider,
     DelayedPatternProvider,
     ParallelPatternProvider,
@@ -26,7 +26,7 @@ from shoelace.audiocraft.modules.codebooks_patterns import (
     VALLEPattern,
     MusicLMPattern,
 )
-from shoelace.audiocraft.modules.conditioners import (
+from ..modules.conditioners import (
     BaseConditioner,
     ConditioningProvider,
     LUTConditioner,
@@ -34,8 +34,8 @@ from shoelace.audiocraft.modules.conditioners import (
     ConditionFuser,
     ChromaStemConditioner,
 )
-from shoelace.audiocraft import quantization as qt
-from shoelace.audiocraft.utils.utils import dict_from_config
+from .. import quantization as qt
+from ..utils.utils import dict_from_config
 
 
 def get_quantizer(quantizer: str, cfg: omegaconf.DictConfig, dimension: int) -> qt.BaseQuantizer:
@@ -56,8 +56,8 @@ def get_encodec_autoencoder(encoder_name: str, cfg: omegaconf.DictConfig):
         decoder_override_kwargs = kwargs.pop('decoder')
         encoder_kwargs = {**kwargs, **encoder_override_kwargs}
         decoder_kwargs = {**kwargs, **decoder_override_kwargs}
-        encoder = modules.SEANetEncoder(**encoder_kwargs)
-        decoder = modules.SEANetDecoder(**decoder_kwargs)
+        encoder = audiocraft.modules.SEANetEncoder(**encoder_kwargs)
+        decoder = audiocraft.modules.SEANetDecoder(**decoder_kwargs)
         return encoder, decoder
     else:
         raise KeyError(f'Unexpected compression model {cfg.compression_model}')
@@ -188,8 +188,8 @@ def get_debug_compression_model(device='cpu'):
         'dimension': 32,
         'ratios': [10, 8, 16]  # 25 Hz at 32kHz
     }
-    encoder = modules.SEANetEncoder(**seanet_kwargs)
-    decoder = modules.SEANetDecoder(**seanet_kwargs)
+    encoder = audiocraft.modules.SEANetEncoder(**seanet_kwargs)
+    decoder = audiocraft.modules.SEANetDecoder(**seanet_kwargs)
     quantizer = qt.ResidualVectorQuantizer(dimension=32, bins=400, n_q=4)
     init_x = torch.randn(8, 32, 128)
     quantizer(init_x, 1)  # initialize kmeans etc.

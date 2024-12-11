@@ -1,10 +1,11 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 from .low_rank_mha import LowRankMultiheadAttention
-from shoelace.adapt_musicgen.musicgen_air import MusicGen
+from shoelace.adapt_musicgen.models.musicgen import MusicGen
 import numpy as np
 from shoelace.utils.network_utils import freeze, print_params
-from shoelace.pianorollLM.pianoroll_lm_with_baby import PianoRollLM, PositionalEncoding
+from shoelace.pianorollLM.pianoroll_lm_with_baby import PianoRollLM
 
 from peft import LoraModel, LoraConfig, get_peft_model
 from tqdm import tqdm
@@ -22,7 +23,7 @@ def save_lora_weights(network, path):
 
 def get_musicgen(sec, device):
     mg = MusicGen.get_pretrained(name='large', device=device)
-    mg.set_generation_params(duration=sec, extend_stride=16, top_k=200)
+    mg.set_generation_params(duration=sec, extend_stride=16, top_k=250)
     mg.lm.prepare_inputs_for_generation = None
     mg.lm.generation_config = None
     mg.lm.init_qkv()
@@ -43,9 +44,11 @@ def get_musicgen(sec, device):
 
 def get_midi_lm(device="cuda"):
     midi_lm = PianoRollLM()
-    midi_lm.load_state_dict(torch.load("save_models/llm_pop_vocals_3.pth", map_location="cpu"))
+    midi_lm.load_state_dict(torch.load("save_models/llm.pth", map_location="cpu"))
+    midi_lm.set_config(device)
     midi_lm.prepare_for_lora(mode="config")
     midi_lm.prepare_inputs_for_generation = None
+    midi_lm.generation_config = None
     target_modules = ["self_attn.q_proj",
                       "self_attn.k_proj",
                       "self_attn.v_proj",
@@ -54,7 +57,7 @@ def get_midi_lm(device="cuda"):
 
     config = LoraConfig(
         task_type="CAUSAL_LM",
-        r=8,
+        r=16,
         lora_alpha=32,
         target_modules=target_modules,
         lora_dropout=0.01,
@@ -64,25 +67,35 @@ def get_midi_lm(device="cuda"):
     return midi_lm_peft
 
 
-def create_mask(a_len, b_len, device):
-    dt = np.random.rand()
-    mask_seq = torch.rand(a_len) * b_len * (1 + dt)
-    mask_seq, _ = torch.sort(mask_seq)
-    mask_seq_a = mask_seq[:, None].repeat(1, b_len)
-    mask_seq_b = torch.arange(b_len)[None, :].repeat(a_len, 1)
-    mask_a = torch.where(mask_seq_a > mask_seq_b, 0, float(-torch.inf))
-    mask_b = torch.where(mask_seq_a > mask_seq_b, float(-torch.inf), 0).transpose(0, 1)
-
+def create_mask(a_len, b_len, device, mask_ratio=.5):
+    mask_a = torch.zeros([a_len, b_len])
     mask = torch.rand_like(mask_a)
-    mask_a[mask < dt/2] = float(-torch.inf)
-    mask_a[:, 0] = 0
-    mask = torch.rand_like(mask_b)
-    mask_b[mask < dt/2] = float(-torch.inf)
-    mask_b[:, 0] = 0
+    mask_a[mask < mask_ratio] = float(-torch.inf)
+
+    # mask_val = mask_a + torch.arange(b_len + 1).unsqueeze(0)
+    # mask_idx = torch.argmax(mask_val, -1)
+    # if np.random.rand() < .5:
+    #     mask_idx, resort_mask_idx = torch.sort(mask_idx)
+    #     mask_a = mask_a[resort_mask_idx]
+    #
+    #
+    # mask_idx = torch.cummax(mask_idx, dim=0).values
+    # # print(mask_idx)
+    # mask_idx = mask_idx.unsqueeze(1).repeat(1, b_len)
+    # mask_seq_b = torch.arange(b_len)[None, :].repeat(a_len, 1) + 1
+    # mask_b = torch.where(mask_idx < mask_seq_b, 0, float(-torch.inf)).transpose(0, 1)
+    #
+    # # mask = torch.rand_like(mask_b)
+    # # mask_b[mask < mask_ratio*.5] = float(-torch.inf)
+    #
+    # mask_b = mask_b + float(-torch.inf)
+    mask_b = torch.zeros_like(mask_a).transpose(0, 1) + float(-torch.inf)
+    mask_a = F.pad(mask_a, (1, 0), "constant", 0)
+    mask_b = F.pad(mask_b, (1, 0), "constant", 0)
     return mask_a.to(device), mask_b.to(device)
 
 
-class CondMusicgen(nn.Module):
+class AudioLM(nn.Module):
     def __init__(self, sec, device="cuda", frame_rate=50):
         super().__init__()
         mg = get_musicgen(sec, device)
@@ -94,16 +107,13 @@ class CondMusicgen(nn.Module):
     def set_training(self):
         self.lm.train()
 
-    def forward(self, seq, desc, embed_fn, num_samples=1, mode="train",
-                total_gen_len=None, prompt_tokens=None):
+    def forward(self, audio_seq):
         mg = self.musicgen
         lm = self.lm
-        attributes, _ = mg._prepare_tokens_and_attributes(desc, None)
         with mg.autocast:
-            out = lm.compute_predictions(codes=seq,
-                                         embed_fn=embed_fn,
-                                         conditions=attributes)
-        return out
+            out = yield from lm.compute_predictions(codes=audio_seq,
+                                                    conditions=[None] * len(audio_seq))
+        yield out
 
     def prepare_for_infer(self, desc, prompt, max_gen_len, num_samples, device):
         mg = self.musicgen
@@ -212,277 +222,208 @@ class CondMusicgen(nn.Module):
     def get_input_embeddings(self):
         return self.lm.emb
 
+    def loss_func(self, audio_seq, pred):
+        pred = pred.logits
+        loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
+        audio_pred = pred[:, :, :-3]
+        audio_target = audio_seq[:, :, :-3]
+        return loss_fn(audio_pred.flatten(0, 2), audio_target.long().flatten())
+
+
+class MIDILM(nn.Module):
+    def __init__(self, sec, device="cuda", frame_rate=50):
+        super().__init__()
+        lm = get_midi_lm(device)
+        self.lm = lm
+        self.max_duration = sec
+        self.frame_rate = frame_rate
+
+    def loss_func(self, midi_seq, pred):
+        loss_fn = nn.CrossEntropyLoss(ignore_index=512)
+        return loss_fn(pred.flatten(0, 1), midi_seq.long().flatten())
+
+    def forward(self, midi_seq):
+        out = yield from self.lm.yield_forward(midi_seq)
+        yield out
+
 
 class SholaceParam(nn.Module):
     def __init__(self,
-                 n_a_layers=48,
-                 n_b_layers=8,
-                 a_embed_dim=2048, b_embed_dim=1024,
-                 a_num_heads=32, b_num_heads=8,
-                 dropout=0.1, ):
+                 n_layers=48,
+                 a_embed_dim=2048,
+                 b_embed_dim=1024,
+                 num_heads=32,
+                 low_rank_dim=64,
+                 long_first=True,
+                 multi_factor=16):
         super(SholaceParam, self).__init__()
-        self.audio_self_attn = nn.ModuleList([
+        self.cross_attn = nn.ModuleList([
             LowRankMultiheadAttention(in_dim=b_embed_dim,
                                       embed_dim=a_embed_dim,
-                                      num_heads=a_num_heads)
-            for i in range(n_a_layers)])
-        self.midi_self_attn = nn.ModuleList([
-            LowRankMultiheadAttention(in_dim=a_embed_dim,
-                                      embed_dim=b_embed_dim,
-                                      num_heads=b_num_heads)
-            for i in range(n_b_layers)])
+                                      num_heads=num_heads,
+                                      low_rank_dim=low_rank_dim,
+                                      long_first=long_first,
+                                      multi_factor=multi_factor)
+            for _ in range(n_layers)])
 
     def set_config(self, device):
-        for layer in self.audio_self_attn:
-            layer.set_config(device)
-        for layer in self.midi_self_attn:
+        for layer in self.cross_attn:
             layer.set_config(device)
 
-    def forward(self, x_a, x_b, layer_idx, mode, attn_mask, cur_step=None, debug=None):
-
-        if mode == "a2b":
-            return self.audio_self_attn[layer_idx](
-                x_a, x_b, mode=mode, cur_step=cur_step,
-                attn_mask=attn_mask,
-                debug=debug,
-            )
-        else:
-            return self.midi_self_attn[layer_idx](
-                x_a, x_b, mode=mode, cur_step=cur_step,
-                attn_mask=attn_mask,
-                debug=debug
-            )
+    def forward(self):
+        for i in range(len(self.cross_attn)):
+            yield self.cross_attn[i]
 
 
-class Sholace(nn.Module):
-    def __init__(self, midi_lm_conf, audio_lm_conf, is_mono):
+class Yinyang(nn.Module):
+    def __init__(self, mode="vocals2mel", sec=15):
         super().__init__()
-        self.cur_audio_step = None
-        self.dropout_p = .1
-        self.is_mono = is_mono
-
-        n_midi_layers = midi_lm_conf["n_layers"]
-        n_audio_layers = audio_lm_conf["n_layers"]
-
-        self.midi_lm = midi_lm_conf["model"]
-        self.audio_lm = audio_lm_conf["model"]
-
-        self.adapter = SholaceParam(n_a_layers=n_audio_layers,
-                                    n_b_layers=n_midi_layers)
-
-        self.midi_state = None
-        self.stride = 6
-
-        self.cache = None
-        self.hidden_states = {}
-        self.cache_seq = {
-            "midi": None,
-            "audio": None
+        model_factory = {
+            "AudioLM": {
+                "model": AudioLM,
+                "n_layers": 48,
+                "low_rank_dim": 64,
+                "hidden_size": 2048,
+                "n_heads": 32,
+                "steps": 16
+            },
+            "MIDILM": {
+                "model": MIDILM,
+                "low_rank_dim": 64,
+                "n_layers": 8,
+                "hidden_size": 1024,
+                "n_heads": 8,
+                "steps": 1
+            },
         }
-        self.cur_audio_layer_idx = 0
-
-    def save_weights(self, path):
-        torch.save(self.adapter.state_dict(), path)
-        save_lora_weights(self.audio_lm, path + ".audio")
-        save_lora_weights(self.midi_lm, path + ".midi")
-
-    def load_weights(self, path, device):
-        self.adapter.load_state_dict(torch.load(path, map_location=device))
-        self.audio_lm.load_state_dict(torch.load(path + ".audio.lora.pth", map_location=device), strict=False)
-        self.midi_lm.load_state_dict(torch.load(path + ".midi.lora.pth", map_location=device), strict=False)
-
-    def audio_emb_fn_unit(self, query, debug):
-        audio_layer_idx = self.cur_audio_layer_idx
-        self.hidden_states["audio"] = query
-
-        if audio_layer_idx % self.stride == 0:
-            midi_layer_idx = audio_layer_idx // self.stride
-            self.cache = self.midi_lm.roll(param_dict=self.cache,
-                                           layer_idx=midi_layer_idx,
-                                           fn=self.midi_emb_fn)
-
-        if self.cur_audio_step is None:
-            cur_step = None
-        else:
-            cur_step = self.cur_audio_step[1]
-        midi_state = self.hidden_states["hidden_state"]
-        return self.adapter(x_a=query,
-                            x_b=midi_state,
-                            debug=debug,
-                            cur_step=cur_step,
-                            attn_mask=self.cache["audio_attn_mask"],
-                            layer_idx=audio_layer_idx,
-                            mode="a2b")
-
-    def audio_emb_fn(self, idx, mode="set_layer_idx"):
-        if mode == "set_layer_idx":
-            self.cur_audio_layer_idx = idx
-            return self.audio_emb_fn_unit
-        elif mode == "update_interval":
-            self.cur_audio_step = idx
-            return self.audio_emb_fn
-
-    def midi_emb_fn(self, hidden_state, q):
-        self.hidden_states["hidden_state"] = hidden_state
-        midi_layer_idx = self.cur_audio_layer_idx // self.stride
-        audio_x = self.hidden_states["audio"]
-        return self.adapter(x_a=hidden_state,
-                            x_b=audio_x,
-                            debug=q,
-                            attn_mask=self.cache["midi_attn_mask"],
-                            layer_idx=midi_layer_idx,
-                            mode="b2a")
-
-    def set_training(self, device):
-        self.audio_lm.set_training()
-        self.midi_lm.set_training(device)
-
-    def set_config(self, device):
-        self.adapter.set_config(device)
-        self.midi_lm.set_config(device)
-
-    def forward(self, audio_seq, midi_seq, melody_seq, desc):
-        with torch.no_grad():
-            self.cache = self.midi_lm.encode2roll(midi_seq, melody_mask=melody_seq)
-
-        a_len, b_len = audio_seq.shape[-1], midi_seq.shape[1]
-        a_len += 1
-
-        if np.random.rand() > .5:
-            audio_attn_mask, midi_attn_mask = create_mask(a_len, b_len, audio_seq.device)
-        else:
-            midi_attn_mask, audio_attn_mask = create_mask(b_len, a_len, audio_seq.device)
-
-        self.cache["audio_attn_mask"] = audio_attn_mask
-        self.cache["midi_attn_mask"] = midi_attn_mask
-
-        audio_out = self.audio_lm(audio_seq, desc, embed_fn=self.audio_emb_fn)
-        audio_out = audio_out.logits
-        midi_loss = self.midi_lm.roll2end(self.cache, with_acc_loss=not self.is_mono)
-        self.cache = None
-        self.hidden_states = {}
-
-        audio_pred = audio_out[:, :, :-3]
-        audio_target = audio_seq[:, :, :-3]
-        loss_fn = nn.CrossEntropyLoss(ignore_index=-1)
-        audio_loss = loss_fn(audio_pred.flatten(0, 2), audio_target.long().flatten())
-        return audio_loss, midi_loss
-
-    @torch.no_grad
-    def inference(self, midi_seq, audio_seq, desc, mode="a2b"):
-
-        if mode == "a2b":
-            max_gen_len = 50 * 16 - 2
-            condition_tensors, attributes, gen_sequence, mask, start_offset_sequence \
-                = self.audio_lm.prepare_for_infer(desc=desc,
-                                                  prompt=None,
-                                                  max_gen_len=max_gen_len,
-                                                  num_samples=len(audio_seq),
-                                                  device=audio_seq.device)
-            gen_sequence_len = gen_sequence.shape[-1]
-            self.cache = self.midi_lm.encode2roll(midi_seq)
-            self.cache["audio_attn_mask"] = None
-            self.cache["midi_attn_mask"] = None
-
-            for offset in tqdm(range(start_offset_sequence, gen_sequence_len),
-                               total=gen_sequence_len - start_offset_sequence,
-                               desc=f"inference"):
-                embed_fn = self.audio_emb_fn(idx=(0, offset), mode="update_interval")
-                curr_sequence = gen_sequence[..., :offset]
-                with self.audio_lm.musicgen.autocast:
-                    logits = self.audio_lm.lm.yy_generate(
-                        embed_fn, curr_sequence, conditions=[], condition_tensors=condition_tensors)
-                gen_sequence = self.audio_lm.sample_next_tokens(logits, mask, offset, gen_sequence)
-            predict_rvq = self.audio_lm.decode(gen_sequence, max_gen_len)
-            return predict_rvq
-
-        elif mode == "b2a":
-            max_gen_len = audio_seq.shape[1]
-            condition_tensors, attributes, gen_sequence, mask, start_offset_sequence \
-                = self.audio_lm.prepare_for_infer(desc=desc,
-                                                  prompt=audio_seq,
-                                                  max_gen_len=max_gen_len,
-                                                  num_samples=len(audio_seq),
-                                                  device=audio_seq.device)
-            gen_sequence_len = gen_sequence.shape[-1] // 16
-            gen_sequence = gen_sequence[..., :max_gen_len]
-            midi_pred = None
-
-            for offset in tqdm(range(gen_sequence_len),
-                               total=gen_sequence_len,
-                               desc=f"inference"):
-                self.cache = self.midi_lm.encode2roll(midi_pred, n=len(audio_seq))
-                self.cache["audio_attn_mask"] = None
-                self.cache["midi_attn_mask"] = None
-
-                embed_fn = self.audio_emb_fn(idx=None, mode="update_interval")
-                with self.audio_lm.musicgen.autocast:
-                    _ = self.audio_lm.lm.yy_generate(
-                        embed_fn, (gen_sequence + 0.).long(), conditions=[], condition_tensors=condition_tensors)
-                next_midi_token = self.midi_lm.sample_next_tokens(self.cache,
-                                                                  top_k=2,
-                                                                  acc_mask=self.is_mono)
-                midi_pred = next_midi_token if midi_pred is None else torch.cat([midi_pred, next_midi_token], 1)
-            return midi_pred
-
-
-def config_model(model, trainable_layers):
-    freeze(model)
-    for n, p in model.named_parameters():
-        for layer in trainable_layers:
-            if layer in n.split("."):
-                p.requires_grad = True
-    return model
-
-
-class Yingyang(nn.Module):
-    def __init__(self, is_mono, sec=15):
-        super().__init__()
-        audio_lm = CondMusicgen(sec)
-        midi_lm = get_midi_lm()
-
-        midi_lm_conf = {
-            "model": midi_lm,
-            "n_layers": 8
+        skip_layers = {
+            "AudioLM-MIDILM": [6, 1],
+            "MIDILM-AudioLM": [1, 6],
         }
-        audio_lm_conf = {
-            "model": audio_lm,
-            "n_layers": 48
+        recipes = {
+            "vocals2mel":
+                {
+                    "models": ["AudioLM", "MIDILM"],
+                    "bi": False,
+                },
+            "vocals-mel":
+                {
+                    "models": ["AudioLM", "MIDILM"],
+                    "bi": True,
+                },
+            "mel2vocals":
+                {
+                    "models": ["MIDILM", "AudioLM"],
+                    "bi": False,
+                },
+
         }
 
-        sholace = Sholace(midi_lm_conf=midi_lm_conf,
-                          audio_lm_conf=audio_lm_conf,
-                          is_mono=is_mono)
-        # sholace = config_model(model=sholace,
-        #                        trainable_layers=[
-        #                            "adapter"
-        #                        ])
-        self.sholace = sholace
-        print_params(self)
+        target_recipe = recipes[mode]
+        models = nn.ModuleList()
+        adapters = nn.ModuleList()
+        n_skip_layer_pairs = []
+        names = []
+        for i, m in enumerate(target_recipe["models"]):
+            params = model_factory[m]
+            models.append(params["model"](sec=sec))
+            names.append(m)
+            if i == len(target_recipe["models"]) - 1:
+                n_skip_layer_pairs.append([-1, -1])
+                break
+            next_target = target_recipe["models"][i + 1]
+            next_param = model_factory[next_target]
+            n_skip_layer_pairs.append(skip_layers[m + "-" + next_target])
+            shoelace = nn.ModuleList()
+            multi_factor = params["steps"] / next_param["steps"] if params["steps"] >= next_param["steps"] else \
+                next_param["steps"] / params["steps"]
+            long_first = params["steps"] >= next_param["steps"]
+            shoelace.append(
+                SholaceParam(
+                    n_layers=params["n_layers"],
+                    a_embed_dim=params["hidden_size"],
+                    b_embed_dim=next_param["hidden_size"],
+                    low_rank_dim=params["low_rank_dim"],
+                    num_heads=params["n_heads"],
+                    multi_factor=multi_factor,
+                    long_first=long_first,
+                )
+            )
+            if target_recipe["bi"]:
+                shoelace.append(
+                    SholaceParam(
+                        n_layers=next_param["n_layers"],
+                        a_embed_dim=next_param["hidden_size"],
+                        b_embed_dim=params["hidden_size"],
+                        low_rank_dim=next_param["low_rank_dim"],
+                        num_heads=next_param["n_heads"],
+                        multi_factor=multi_factor,
+                        long_first=not long_first,
+                    )
+                )
+            adapters.append(shoelace)
 
-    def set_training(self, device):
-        self.sholace.set_training(device)
+        self.bi_di = target_recipe["bi"]
+        self.models = models
+        self.adapters = adapters
+        self.names = names
+        self.n_skip_layer_pairs = n_skip_layer_pairs
+        self.n_layers = model_factory[self.names[0]]["n_layers"]
         print_params(self)
 
     def set_config(self, device):
-        self.sholace.set_config(device)
+        for adapter in self.adapters:
+            for ad in adapter:
+                ad.set_config(device)
 
     def save_weights(self, path):
-        self.sholace.save_weights(path)
+        self.adapters.save_weights(path)
+
+        for i, model in enumerate(self.models):
+            save_lora_weights(model, path + "." + self.names[i])
 
     def load_weights(self, path, device="cpu"):
-        self.sholace.load_weights(path, device)
+        self.adapters.load_weights(path, device)
+        for model in self.models:
+            model.load_weights(path, device)
 
-    def forward(self, audio_seq, melody_seq, midi_seq, desc):
-        return self.sholace(audio_seq=audio_seq,
-                            melody_seq=melody_seq,
-                            midi_seq=midi_seq,
-                            desc=desc)
+    def stitch(self, model_gen, adapters, n_layers, n_skip_layer_pairs, bi_di=True):
+        a_skip_layers, b_skip_layers = n_skip_layer_pairs[0]
+        out, query, q, kv_x = None, None, None, None
+        adapter = adapters[0] if len(adapters) > 0 else None
+        for i in range(n_layers):
+            out, query, q = next(model_gen[0])
+            if a_skip_layers > 0 and i % a_skip_layers == 0:
+                kv_out, kv_x, kv_q = self.stitch(model_gen[1:],
+                                                 adapters[1:],
+                                                 n_layers=b_skip_layers,
+                                                 n_skip_layer_pairs=n_skip_layer_pairs[1:],
+                                                 bi_di=bi_di)
+                if bi_di:
+                    kv_out[0] = kv_out[0] + next(adapter[1])(q=kv_q, kv_x=query)
+                    kv_out[1] = i
+            if adapter is not None:
+                out[0] = out[0] + next(adapter[0])(q=q, kv_x=kv_x)
+                out[1] = i
+        return out, query, q
 
-    def inference(self, midi_seq, audio_seq, desc, mode):
-        with torch.no_grad():
-            rvq_codes = self.sholace.inference(
-                midi_seq=midi_seq,
-                audio_seq=audio_seq,
-                desc=desc, mode=mode)
-        return rvq_codes
+    def forward(self, seqs):
+        model_gen = [model(**seqs[i]) for i, model in enumerate(self.models)]
+        adapters = []
+        for i in range(len(self.adapters)):
+            adapter_fn = []
+            for ad in self.adapters[i]:
+                adapter_fn.append(ad())
+            adapters.append(adapter_fn)
+
+        self.stitch(model_gen=model_gen,
+                    adapters=adapters,
+                    n_layers=self.n_layers,
+                    n_skip_layer_pairs=self.n_skip_layer_pairs,
+                    bi_di=self.bi_di)
+        loss = {}
+        for i, model in enumerate(model_gen):
+            out = next(model)
+            seqs[i]["pred"] = out
+            loss[self.names[i]] = self.models[i].loss_func(**seqs[i])
+        return loss

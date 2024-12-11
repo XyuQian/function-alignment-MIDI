@@ -5,6 +5,4 @@
 # LICENSE file in the root directory of this source tree.
 
 # flake8: noqa
-from . import data, modules, models
-
-__version__ = '0.0.2a2'
+from . import audio, audio_dataset

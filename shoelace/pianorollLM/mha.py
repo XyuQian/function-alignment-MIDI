@@ -210,7 +210,6 @@ class MultiheadAttention(Module):
         attn_mask: Optional[Tensor] = None,
         average_attn_weights: bool = True,
         is_causal: bool = False,
-        emb_fn = None,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         r"""Compute attention outputs using query, key, and value embeddings.
 
@@ -409,7 +408,7 @@ class MultiheadAttention(Module):
                 query, key, value = (x.transpose(1, 0) for x in (query, key, value))
 
         if not self._qkv_same_embed_dim:
-            attn_output, attn_output_weights = multi_head_attention_forward(
+            attn_output, attn_output_weights = yield from multi_head_attention_forward(
                 query,
                 key,
                 value,
@@ -433,7 +432,6 @@ class MultiheadAttention(Module):
                 v_proj_weight=self.v_proj,
                 average_attn_weights=average_attn_weights,
                 is_causal=is_causal,
-                emb_fn=emb_fn
             )
         else:
             attn_output, attn_output_weights = F.multi_head_attention_forward(

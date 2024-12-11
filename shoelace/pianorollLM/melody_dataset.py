@@ -6,31 +6,25 @@ import torch
 from tqdm import tqdm
 from torch.utils.data import Dataset as BaseDataset, get_worker_info
 
-DIGITS = [2 ** i for i in range(7)]
-
+PAD_VAL = -1
+EOS = 384
+PAD = 385
+STRIDE = 32
+SEQ_LEN = 24
 
 def load_data_lst(path_folder):
-    list_folders = [
-        # "data/formatted/las_melody/mel_acc_text",
-                    "data/formatted/groups/pop909_text"]
-    feature_folders = [
-        # "data/formatted/las_melody/tokens",
-                       "data/formatted/groups/pop909_tokens"]
-
+    list_folder = os.path.join(path_folder, "las_melody", "text")
+    feature_folder = os.path.join(path_folder, "las_melody", "feature")
     files = []
     feature_path = []
-    for i, folder in enumerate(list_folders):
-        for f in os.listdir(folder):
-            path_lst = os.path.join(folder, f)
-            f_path = os.path.join(feature_folders[i], str.replace(f, ".lst", ".h5"))
-            if path_lst == "data/formatted/groups/pop909_text/6.lst":
-                continue
-            print(path_lst)
-            with open(path_lst, "r") as pf:
-                fs = pf.readlines()
+    for f in os.listdir(list_folder):
+        path_lst = os.path.join(list_folder, f)
+        f_path = os.path.join(feature_folder, str.replace(f, ".lst", ".h5"))
+        with open(path_lst, "r") as pf:
+            fs = pf.readlines()
 
-            files.append([s.rstrip().split("\t")[0] for s in fs])
-            feature_path.append(f_path)
+        files.append([s.rstrip().split("\t")[0] for s in fs])
+        feature_path.append(f_path)
 
     return files, feature_path
 
@@ -47,35 +41,27 @@ class TokenDataset(BaseDataset):
         tlen = [[] for _ in range(len(feature_path))]
 
         for i, data_path in enumerate(feature_path):
-            add_files = []
-            with h5py.File(data_path, "r") as hf:
-                for j, f in tqdm(enumerate(files[i]), total=len(files),
-                                 desc=f"prepare dataset {i} / {len(feature_path)}"):
-                    if f in hf:
-                        add_files.append(f)
-                files[i] += add_files
-
-        for i, data_path in enumerate(feature_path):
             with h5py.File(data_path, "r") as hf:
                 tlen[i] = [0 for _ in range(len(files[i]))]
                 for j, f in tqdm(enumerate(files[i]), total=len(files),
                                  desc=f"prepare dataset {i} / {len(feature_path)}"):
-                    f = f + ".acc"
                     if f not in hf:
                         continue
                     total_len = hf[f].shape[0]
                     tlen[i][j] = total_len
-                    if total_len < seg_len // 8:
-                        index[str(i % num_workers)].append([i, j, 0])
+
+                    if total_len > seg_len:
+                        for k in range(0,  total_len - seg_len, 50):
+                            index[str(i % num_workers)].append([i, j, k])
                     else:
-                        for st in range(0, total_len - seg_len // 16, 5):
-                            index[str(i % num_workers)].append([i, j, st])
+                        index[str(i % num_workers)].append([i, j, 0])
         self.tlen = tlen
         self.f_len = sum([len(index[i]) for i in index])
         self.index = index
         self.files = files
         self.feature_path = feature_path
         self.data = [None for _ in feature_path]
+
         print("num of files", sum([len(f) for f in self.files]))
         print("num of segs", self.f_len)
 
@@ -90,13 +76,10 @@ class TokenDataset(BaseDataset):
         ed = st + self.seg_len
         if ed > self.tlen[tid][fid]:
             ed = self.tlen[tid][fid]
-
-        # acc_data = np.reshape(self.data[tid][fname + ".acc"][st: ed][:], [-1, 3, 4])
-        mel_data = self.data[tid][fname + ".mel"][st: ed][:]
-        # melody = self.data[tid][fname + ".melody"][st: ed][:]
-        # data = np.reshape(np.stack([mel_data, acc_data], 2), [-1, 24])
-        ctx_pos = np.arange(st, ed) * 1. / (self.tlen[tid][fid] - 1)
-        return mel_data, ctx_pos
+        mel_data = self.data[tid][fname][st: ed][:]
+        if len(mel_data) < self.seg_len:
+            mel_data = np.pad(mel_data, (0, self.seg_len - ed + st), "constant", constant_values=-1)
+        return mel_data
 
     def __getitem__(self, idx):
         # worker_id = get_worker_info().id if self.use_loader else 0
@@ -117,16 +100,37 @@ def worker_init_fn(worker_id):
 
 
 def collate_fn(batch):
-    max_t = max([b[0].shape[0] for b in batch])
-    outs = []
-    for b in batch:
-        piano = np.pad(b[0], ((0, max_t - b[0].shape[0]), (0, 0)), 'constant', constant_values=(512, 512))
-        ctx_pos = np.pad(b[1], (0, max_t - b[1].shape[0]), 'constant', constant_values=(0, 1))
-        outs.append([piano, ctx_pos])
-    x = torch.from_numpy(np.stack([out[0] for out in outs], 0)).long()
-    ctx_pos = torch.from_numpy(np.stack([out[1] for out in outs], 0)).float()
+    seq = torch.from_numpy(np.stack(batch, 0))
+    bs = len(seq)
+    x = seq.view(-1, STRIDE)
+    n = len(x)
+    eos = torch.zeros([n, 1]) + EOS
+    x = torch.concat([x, eos], -1).long()
+    idx = torch.arange(STRIDE + 1)[None, ...].repeat(n, 1)
+    mask = x > 128
+    mask[:, 0] = True
+    mask[x < 0] = False
+
+    melody = torch.zeros([n, SEQ_LEN, 2]).long()
+    melody_id = torch.arange(SEQ_LEN)[None, ...].repeat(n, 1)
+    melody[..., 0] = PAD
+    melody[..., 1] = STRIDE
+    target_mask = mask.sum(-1)[..., None].repeat(1, SEQ_LEN)
+    target_mask = melody_id < target_mask
+    melody[..., 0][target_mask] = x[mask]
+    melody[..., 1][target_mask] = idx[mask]
+    melody = melody.view(bs, -1, SEQ_LEN, 2)
+    seq = seq.view(bs, -1, STRIDE)
+    seq[seq == -1] = PAD
+
+    # print("==========================================")
+    # print(melody[0, 0, :, 0])
+    # print(melody[0, 0, :, 1])
+    # print("------------------------------------------")
+    # print(x[0])
+    # print("==========================================")
+
     return {
-        "x": x,
-        "melody": None,
-        "ctx_pos": ctx_pos
+        "melody": melody,
+        "seq": seq,
     }

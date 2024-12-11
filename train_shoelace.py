@@ -16,9 +16,10 @@ from tqdm import tqdm
 
 from shoelace.actual_shoelace.shoelace_dataset import ShoelaceDataset as Dataset
 from shoelace.actual_shoelace.shoelace_dataset import collate_fn, worker_init_fn
-from shoelace.actual_shoelace.shoelace_2 import Yingyang as Model
+from shoelace.actual_shoelace.shoelace import Yinyang as Model
 
 device = "cuda"
+SAMPLE_SEC = 16
 
 
 def _get_free_port():
@@ -27,12 +28,11 @@ def _get_free_port():
         return s.server_address[1]
 
 
-def get_dataset(rid, is_mono, batch_size):
+def get_dataset(rid, batch_size):
     num_workers = 0
-    dataset = Dataset(is_mono=is_mono,
-                      path_folder="data/formatted/groups",
+    dataset = Dataset(path_folder="data/formatted/groups",
                       rid=rid,
-                      seg_sec=16,
+                      seg_sec=SAMPLE_SEC,
                       num_workers=num_workers)
 
     dataloader = torch.utils.data.DataLoader(
@@ -55,14 +55,12 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
     torch.distributed.init_process_group('nccl', rank=replica_id, world_size=replica_count)
     device = torch.device('cuda', replica_id)
     torch.cuda.set_device(device)
-    model = Model(is_mono=args.mono)
+    model = Model(sec=SAMPLE_SEC, mode=args.mode)
     model = model.to(device)
     model.set_config(device)
-    model.set_training(device)
     model = DDP(model, [replica_id])
 
     dataset, dataloader = get_dataset(rid=replica_id,
-                                      is_mono=args.mono,
                                       batch_size=args.batch_size)
 
     train(replica_id, model, dataset, dataloader, device, model_dir,
@@ -93,34 +91,35 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
         r = rng.randint(0, 710)
         dataset.reset_random_seed(r, e)
         for i, batch in enumerate(dl):
-
-            audio_loss, midi_loss = model(**batch)
-            loss = midi_loss + audio_loss
+            loss = 0
+            loss_dict = model(batch)
+            for n in loss_dict:
+                loss += loss_dict[n]
             grad, lr = trainer.step(loss, model.parameters())
 
             step += 1
             n_element += 1
             if rank == 0:
-                writer.add_scalar("audio_loss", audio_loss.item(), step)
-                writer.add_scalar("midi_loss", midi_loss.item(), step)
+                for n in loss_dict:
+                    writer.add_scalar(n, loss_dict[n].item(), step)
                 writer.add_scalar("grad", grad, step)
                 writer.add_scalar("lr", lr, step)
 
-            mean_loss += loss.item()
+            mean_loss += (loss.item() / n_element)
 
             if rank == 0 and i > 0 and i % 3100 == 0:
                 with torch.no_grad():
                     writer.add_scalar('train/mean_loss', mean_loss, step)
                     model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
 
-        mean_loss = mean_loss / n_element
+            mean_loss = mean_loss / n_element
         model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
 
 
 def main(args):
     experiment_folder = args.experiment_folder
     experiment_name = args.exp_name
-    print("mono", args.mono)
+
 
     if not os.path.exists(experiment_folder):
         os.mkdir(experiment_folder)
@@ -139,7 +138,7 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--batch_size', type=int, default=64)
     parser.add_argument('-w', '--world_size', type=int, default=5)
     parser.add_argument('-lr', '--learning_rate', type=float)
-    parser.add_argument('--mono', action='store_true')
+    parser.add_argument('-m', '--mode', type=str)
     parser.add_argument('-n', '--exp_name', type=str)
 
     args = parser.parse_args()

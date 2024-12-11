@@ -27,7 +27,8 @@ import os
 from omegaconf import OmegaConf
 import torch
 
-from shoelace.adapt_musicgen import builders_air as builders
+from . import builders
+
 
 HF_MODEL_CHECKPOINTS_MAP = {
     "small": "facebook/musicgen-small",

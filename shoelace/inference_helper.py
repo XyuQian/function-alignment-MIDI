@@ -18,7 +18,7 @@ class InferenceHelper():
                                   }, device=device)
         rvq.eval()
         lm = lm_model()
-        lm.load_state_dict(torch.load("save_models/llm_pop_vocals_2.pth", map_location="cpu"))
+        lm.load_state_dict(torch.load("save_models/llm_pop_vocals_5.pth", map_location="cpu"))
         lm = lm.to(device)
         lm.set_config(device)
         lm.eval()
@@ -83,35 +83,33 @@ class InferenceHelper():
             out = predict(pred, n=len(data))
         return out
 
-    def inference(self, melody, acc, max_len=200):
+    def inference(self, melody, acc, ctx_pos, max_len=200):
         rvq = self.rvq
         lm = self.lm
 
         n = len(melody)
         with torch.no_grad():
             melody = rvq.get_indices(melody)
-            acc = rvq.get_indices(acc)
-            melody_idx = melody.view(n, -1, 3, 4)
-            acc_idx = acc.view(n, -1, 3, 4)
-            indices = torch.stack([melody_idx, acc_idx], 3).flatten(2, 4)
+            # acc = rvq.get_indices(acc)
 
-            prompt = indices[:, :25]
-            # for i in range(1, 6):
-            #     prompt[i] = prompt[4]
+            # melody_idx = melody.view(n, -1, 3, 4)
+            # acc_idx = acc.view(n, -1, 3, 4)
+            # indices = torch.stack([melody_idx, acc_idx], 3).flatten(2, 4)
+
+            prompt = melody[:, :16*50//16]
 
             predicted_indices = lm.inference(prompt,
+                                             ctx_pos=ctx_pos,
                                              top_k=32, temperature=1.,
-                                             activation=None,
-                                             refine_fn=self.refine_fn,
                                              max_len=max_len)
-            print(predicted_indices.shape)
+            # print(predicted_indices.shape)
             total_tokens = torch.concat([prompt, predicted_indices], 1)
-            total_tokens = total_tokens.view(len(indices), -1, 3, 2, 4)
-            melody_tokens = total_tokens[:, :, :, 0].flatten(2, 3)
-            acc_tokens = total_tokens[:, :, :, 1].flatten(2, 3)
-            print(melody_tokens.shape)
-            pred = rvq.decode_from_indices(melody_tokens)
-            melody = predict(pred, n=len(indices))
-            pred = rvq.decode_from_indices(acc_tokens)
-            acc = predict(pred, n=len(indices))
-        return melody, acc
+            # total_tokens = total_tokens.view(len(indices), -1, 3, 2, 4)
+            # melody_tokens = total_tokens[:, :, :, 0].flatten(2, 3)
+            # acc_tokens = total_tokens[:, :, :, 1].flatten(2, 3)
+            # print(melody_tokens.shape)
+            pred = rvq.decode_from_indices(total_tokens)
+            melody = predict(pred, n=len(total_tokens))
+            # pred = rvq.decode_from_indices(acc_tokens)
+            # acc = predict(pred, n=len(indices))
+        return melody

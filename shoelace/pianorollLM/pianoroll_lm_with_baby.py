@@ -3,7 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
-from shoelace.utils.network_utils import print_params
+import numpy as np
+from shoelace.pianoroll_vq.base_vq import LinearBlock
 
 
 def sample(logits, top_k_val=20, temperature=1.):
@@ -19,7 +20,7 @@ def sample(logits, top_k_val=20, temperature=1.):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=400 + 1):
+    def __init__(self, d_model, max_len=1000 + 1):
         super(PositionalEncoding, self).__init__()
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -38,12 +39,31 @@ class PositionalEncoding(nn.Module):
         return x + pe[:, :x_len, :]
 
 
+class ContextPosEncoding(nn.Module):
+    def __init__(self, d_model, max_len=1000 + 1):
+        super(ContextPosEncoding, self).__init__()
+        self.pos_encoding = nn.Sequential(
+            LinearBlock(1, 256),
+            LinearBlock(256, 2048),
+            LinearBlock(2048, d_model)
+        )
+        self.re_pos = PositionalEncoding(d_model=d_model, max_len=max_len)
+
+    def set_config(self, device):
+        self.re_pos.set_config(device)
+
+    def forward(self, x, ctx_pos):
+
+        return self.re_pos(x) + self.pos_encoding(ctx_pos.unsqueeze(-1))
+
+
 class BabyLLM(nn.Module):
-    def __init__(self, n_words=512, embedding_dim=1024, n_codebooks=10, n_layers=4):
+    def __init__(self, n_words=512, memory_dim=512, embedding_dim=512, n_codebooks=10, n_layers=3):
         super(BabyLLM, self).__init__()
         self.in_layer = nn.Embedding(n_words + 1, embedding_dim)
 
-        self.pos_encoding = nn.Parameter(torch.randn(1, n_codebooks - 1, 1), requires_grad=True)
+        self.pos_emb = nn.Parameter(torch.randn(1, n_codebooks - 1, 1), requires_grad=True)
+        # self.mem_linear = nn.Linear(memory_dim, embedding_dim, bias=False)
         decoder_layer = nn.TransformerDecoderLayer(d_model=embedding_dim, nhead=8,
                                                    batch_first=True)
         self.decoder = nn.TransformerDecoder(decoder_layer,
@@ -54,10 +74,10 @@ class BabyLLM(nn.Module):
         self.n_codebooks = n_codebooks
 
     def forward(self, tgt, memory, melody=None):
-        tgt = self.in_layer(tgt) + self.pos_encoding
+        tgt = self.in_layer(tgt) + self.pos_emb
         sos = self.sos.repeat(len(tgt), 1, 1)
         tgt = torch.concat([sos, tgt], 1)
-        # memory = self.mem_linear(memory) + self.melody_mem(melody)
+        # memory = self.mem_linear(memory)
         attn_mask = nn.Transformer.generate_square_subsequent_mask(self.n_codebooks).to(tgt.device)
         decoder_output = self.decoder(tgt, memory,
                                       tgt_mask=attn_mask,
@@ -65,27 +85,22 @@ class BabyLLM(nn.Module):
         out = self.output_layer(decoder_output)
         return out
 
-    def inference(self, memory, acc_mask=False, top_k=10, temperature=1.):
+    def inference(self, memory, top_k=10, temperature=1.):
         sos = self.sos.repeat(len(memory), 1, 1)
         tgt = sos
         decoded_sequence = None
-
-
         for i in range(self.n_codebooks):
-            if acc_mask and i // 4 % 2 == 1:
-                next_token = torch.zeros_like(decoded_sequence[:, :1]) + 512
-            else:
-                attn_mask = nn.Transformer.generate_square_subsequent_mask(len(tgt[0])).to(tgt.device)
-                decoder_output = self.decoder(tgt, memory,
-                                              tgt_mask=attn_mask,
-                                              tgt_is_causal=True)
-                logits = self.output_layer(decoder_output[:, -1:])
-                next_token = sample(logits, top_k_val=top_k, temperature=temperature)
+            attn_mask = nn.Transformer.generate_square_subsequent_mask(len(tgt[0])).to(tgt.device)
+            decoder_output = self.decoder(tgt, memory,
+                                          tgt_mask=attn_mask,
+                                          tgt_is_causal=True)
+            logits = self.output_layer(decoder_output[:, -1:])
+            next_token = sample(logits, top_k_val=top_k, temperature=temperature)
 
             decoded_sequence = torch.concat([decoded_sequence, next_token],
                                             -1) if decoded_sequence is not None else next_token
             if i < self.n_codebooks - 1:
-                next_embedding = self.in_layer(next_token) + self.pos_encoding[:, i]
+                next_embedding = self.in_layer(next_token) + self.pos_emb[:, i]
                 tgt = torch.concat([tgt, next_embedding], 1)
         return decoded_sequence
 
@@ -100,7 +115,7 @@ class InputEmbedding(nn.Module):
 
         self.layers = nn.ModuleList(
             nn.ModuleList(
-                nn.Embedding(n_words + 2, embedding_dim[i]) for _ in range(n_codebooks[i])
+                nn.Embedding(n_words + 1, embedding_dim[i]) for _ in range(n_codebooks[i])
             ) for i in range(len(n_codebooks))
         )
         self.sos = nn.Parameter(torch.randn(1, 1, sum(embedding_dim)), requires_grad=True)
@@ -124,7 +139,7 @@ class InputEmbedding(nn.Module):
             outs.append(emb)
         out = torch.concat(outs, -1)
         if padding:
-            sos = self.sos.repeat(len(out), 1, 1)
+            sos = self.sos.repeat(len(x), 1, 1)
             out = torch.concat([sos, out], 1)
         return out
 
@@ -132,21 +147,24 @@ class InputEmbedding(nn.Module):
 class PianoRollLM(nn.Module):
     def __init__(self, embedding_dim=1024, num_heads=8, num_layers=8):
         super(PianoRollLM, self).__init__()
-        self.input_embed = InputEmbedding(n_words=512,
-                                          n_codebooks=[4, 4, 4, 4, 4, 4],
-                                          embedding_dim=[256, 256, 128, 128, 128, 128])
-        self.pos_encoding = PositionalEncoding(d_model=embedding_dim)
+        self.input_embedding = InputEmbedding(n_words=512,
+                                              n_codebooks=[4, 4, 4],
+                                              embedding_dim=[512, 256, 256])
+        self.pos_encoding = PositionalEncoding(d_model=embedding_dim, max_len=1000)
 
         decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=num_heads,
                                                 batch_first=True)
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=num_layers)
-
         self.baby_llm = BabyLLM(n_words=512,
+                                memory_dim=1024,
                                 embedding_dim=1024,
-                                n_codebooks=24,
+                                n_codebooks=12,
                                 n_layers=4)
         self.n_pr_words = 512
         self.embedding_dim = 1024
+        self.n_first_layers = 2
+        self.hn_layers = (num_layers - self.n_first_layers * 2) // 2
+        self.n_decoder_layers = num_layers
 
     def set_config(self, device):
         self.pos_encoding.set_config(device)
@@ -157,154 +175,150 @@ class PianoRollLM(nn.Module):
     def prepare_for_lora(self, mode):
         self.transformer_decoder.prepare_for_lora(mode)
 
-    def forward(self, x, melody):
-        src_padding_mask = torch.where(x[:, :, 0] == self.n_pr_words, float('-inf'), 0)
+    def res_decode(self, embed_x_with_pos, x, ctx_pos):
+        mask_schedule = [.6, .8, .9, .95]
 
-        mask = (torch.rand(x[:, :1, :2].shape) > .5).long().to(x.device)
-        mask[mask.sum(2) == 0] = 1
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(embed_x_with_pos.shape[1]).to(
+            embed_x_with_pos.device)
+        src_padding_mask = torch.where(x[:, :, 0] == 512, float('-inf'), 0) if x is not None else None
+        transformer_decoder = self.transformer_decoder
+        param_dict = transformer_decoder.encode2roll(
+            src=embed_x_with_pos,
+            mask=attn_mask,
+            src_key_padding_mask=src_padding_mask,
+            is_causal=True,
+            target=None,
+        )
+        n_layers = len(transformer_decoder.layers)
+        x_res = x
+        if x is None:
+            x_res = torch.zeros_like(embed_x_with_pos[:, :, :12]).long()
+        mask_indices = []
 
-        mask = mask[:, :, None, :, None].repeat(1, x.shape[1], 3, 1, 4).flatten(2, 4)
+        pos_decay = torch.arange(embed_x_with_pos.shape[1]).to(embed_x_with_pos.device)
+        pos_decay = 2. / (torch.exp(-1 * pos_decay / 20.) + 1) - 1  # 2/(e^(-x/100) + 1)  - 1
+        for i in range(n_layers // 2):
+            output = param_dict["output"]
+            mask_r = torch.rand_like(x_res[0, :, 0].float())
+            mask_idx = mask_r * pos_decay < mask_schedule[i]
+            output = output[:, mask_idx]
+            pos_decay = pos_decay[mask_idx]
+            mask_indices = [mask_idx] + mask_indices
+            x_res = x_res[:, mask_idx]
+            src_padding_mask = torch.where(x_res[:, :, 0] == 512, float('-inf'), 0) if x is not None else None
+            attn_mask = nn.Transformer.generate_square_subsequent_mask(x_res.shape[1]).to(
+                x_res.device)
 
-        masked_x = torch.where(mask[:, 1:] > 0, x[:, :-1], 512)
-        target = torch.where(mask > 0, x, 512)
-        baby_target = torch.where(mask > 0, x, 512)
+            param_dict["src_key_padding_mask_for_layers"] = src_padding_mask
+            param_dict["mask"] = attn_mask
+            param_dict["output"] = output
+            param_dict = transformer_decoder.roll(param_dict, i)
 
-        embed_x = self.input_embed(masked_x)
+        mask = None
+        for i in range(1, len(mask_indices)):
+            mask = mask_indices[i].clone()
+            mask[mask_indices[i]] = mask_indices[i - 1]
+            mask_indices[i] = mask
+        output = self.pos_encoding(torch.zeros_like(embed_x_with_pos), ctx_pos)
+        src_padding_mask = torch.where(x[:, :, 0] == 512, float('-inf'), 0) if x is not None else None
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(embed_x_with_pos.shape[1]).to(
+            embed_x_with_pos.device)
+        output[:, mask] = param_dict["output"]
+        param_dict["src_key_padding_mask_for_layers"] = src_padding_mask
+        param_dict["mask"] = attn_mask
+        param_dict["output"] = output
+
+        for i in range(n_layers // 2, n_layers):
+            param_dict = transformer_decoder.roll(param_dict, i)
+
+        decoder_output = transformer_decoder.roll2end(param_dict)
+        return decoder_output
+
+
+    def yield_forward(self, midi_seq):
+        input_x = midi_seq[:, :-1]
+
+        baby_target = midi_seq
+
+        embed_x = self.input_embedding(input_x)
         embed_x_with_pos = self.pos_encoding(embed_x)
         attn_mask = nn.Transformer.generate_square_subsequent_mask(embed_x.shape[1]).to(embed_x.device)
-        decoder_output = self.transformer_decoder(embed_x_with_pos,
+        src_padding_mask = torch.where(midi_seq[:, :, 0] == 512, float('-inf'), 0)
+
+        decoder_output = yield from self.transformer_decoder(embed_x_with_pos,
                                                   src_key_padding_mask=src_padding_mask,
                                                   is_causal=True,
                                                   mask=attn_mask)
         memory = decoder_output.flatten(0, 1)[:, None]
-
         baby_target = baby_target.flatten(0, 1)
-        # melody = melody.flatten(0, 1)
+
         outputs = self.baby_llm(tgt=baby_target[:, :-1],
                                 memory=memory)
-        # melody=melody.unsqueeze(1))
+        return outputs
 
-        # melody_pred = self.melody_out(decoder_output)
-        # diff = torch.abs(melody[:, 1:] - melody[:, :-1]) > 0
-        diff = melody > 0
-        # diff = F.pad(diff.long(), (1, 0), "constant", 1)
-        # print(diff.shape, melody.shape, outputs.shape)
-        diff = diff.flatten()
-        mask = (torch.rand(diff.shape) > .5).long()
-        mask[diff > 0] = 1
+    def forward(self, x):
+        input_x = x[:, :-1]
 
-        outputs = outputs.view(-1, 3, 2, 4, 512)
-        melody_outputs = outputs[:, :, 0].flatten(1, 2)
-        acc_outputs = outputs[:, :, 1].flatten(1, 2)
-        target = target.view(-1, 3, 2, 4)
-        melody_target = target[:, :, 0].flatten(1, 2)
-        acc_target = target[:, :, 1].flatten(1, 2)
-
-        loss_fn = nn.CrossEntropyLoss(ignore_index=512)
-        melody_loss = loss_fn(melody_outputs[mask > 0].flatten(0, 1), melody_target[mask > 0].flatten())
-        acc_loss = loss_fn(acc_outputs.flatten(0, 1), acc_target.flatten())
-        return melody_loss + acc_loss
-
-    def encode2roll(self, x, melody_mask=None, with_padding=False, n=None):
-        target = x
-        if x is None:
-            embed_x = self.input_embed(None, n=n)
-        else:
-            input_x = x[:, :-1] if self.training else x
-            embed_x = self.input_embed(input_x)
-
+        baby_target = target = x
+        embed_x = self.input_embedding(input_x)
         embed_x_with_pos = self.pos_encoding(embed_x)
-        attn_mask = nn.Transformer.generate_square_subsequent_mask(embed_x.shape[1]).to(embed_x.device)
-        src_padding_mask = torch.where(target[:, :, 0] == self.n_pr_words, float('-inf'), 0) if with_padding else None
-        if melody_mask is not None:
-            # non_sil = (melody_mask > 0).flatten()
-            diff = torch.abs(melody_mask[:, 1:] - melody_mask[:, :-1]) > 0
-            diff = torch.concat([torch.ones_like(diff[:, :1]), diff], 1)
-            diff = diff.flatten()
-            melody_mask = (torch.rand(diff.shape) > .5).long()
-            melody_mask[diff > 0] = 1
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(x.shape[1]).to(x.device)
+        src_padding_mask = torch.where(x[:, :, 0] == 512, float('-inf'), 0) if x is not None else None
 
-        return self.transformer_decoder.encode2roll(
-            melody_mask=melody_mask,
-            target=target,
-            src=embed_x_with_pos,
-            mask=attn_mask,
-            src_key_padding_mask=src_padding_mask,
-            is_causal=True
-        )
+        decoder_output = self.transformer_decoder(embed_x_with_pos,
+                                                  src_key_padding_mask=src_padding_mask,
+                                                  is_causal=True,
+                                                  mask=attn_mask)
 
-    def roll(self, param_dict, layer_idx, fn):
-
-        return self.transformer_decoder.roll(param_dict=param_dict, layer_idx=layer_idx, fn=fn)
-
-    def roll2end(self, param_dict, with_acc_loss=True):
-        decoder_output = self.transformer_decoder.roll2end(param_dict)
+        # decoder_output = self.res_decode(embed_x_with_pos, x=x, ctx_pos=ctx_pos)
         memory = decoder_output.flatten(0, 1)[:, None]
 
-        target = param_dict["target"].flatten(0, 1)
-
-        outputs = self.baby_llm(tgt=target[:, :-1],
+        baby_target = baby_target.flatten(0, 1)
+        outputs = self.baby_llm(tgt=baby_target[:, :-1],
                                 memory=memory)
-        melody_mask = param_dict["melody_mask"]
-
-
-        outputs = outputs.view(-1, 3, 2, 4, 512)
-        melody_outputs = outputs[:, :, 0].flatten(1, 2)
-        acc_outputs = outputs[:, :, 1].flatten(1, 2)
-        target = target.view(-1, 3, 2, 4)
-        melody_target = target[:, :, 0].flatten(1, 2)
-        acc_target = target[:, :, 1].flatten(1, 2)
-
         loss_fn = nn.CrossEntropyLoss(ignore_index=512)
-        if melody_mask is None:
-            melody_loss = loss_fn(melody_outputs.flatten(0, 1),
-                                  melody_target.flatten())
-        else:
-            melody_loss = loss_fn(melody_outputs[melody_mask > 0].flatten(0, 1),
-                                  melody_target[melody_mask > 0].flatten())
-        acc_loss = loss_fn(acc_outputs.flatten(0, 1), acc_target.flatten()) if with_acc_loss else 0
-        return melody_loss + acc_loss
+        acc_loss = loss_fn(outputs.flatten(0, 1), target.flatten())
+        return acc_loss
 
-    def sample_next_tokens(self, param_dict, acc_mask, top_k=32, temperature=1.):
+
+    def sample_next_tokens(self, param_dict, top_k=32, temperature=1.):
         decoder_output = self.transformer_decoder.roll2end(param_dict)
         memory = decoder_output[:, -1:]
         next_token = self.baby_llm.inference(memory=memory,
-                                             acc_mask=acc_mask,
+
                                              temperature=temperature,
                                              top_k=top_k)
 
         return next_token[:, None]
 
-    def inference(self, x, refine_fn, activation, max_len=100, top_k=10, temperature=1.):
-        embed_x = self.input_embed(x)
+    def inference(self, x, ctx_pos, max_len=100, top_k=10, temperature=1., mask_ratio=0.):
+        embed_x = self.input_embedding(x)
         decoded_sequence = []
         print(x.shape, max_len)
         assert x.shape[1] < max_len
-        # print(x.shape)
-        # melody_sequence = []
-        for i, _ in tqdm(enumerate(range(max_len - x.shape[1])), total=max_len - x.shape[1],
+        prompt_len = x.shape[1]
+
+        for i, _ in tqdm(enumerate(range(max_len - prompt_len)), total=max_len - prompt_len,
                          desc=f"inference"):
-            embedding = self.pos_encoding(embed_x)
+            # print(embed_x.shape, ctx_pos.shape)
+            embedding = self.pos_encoding(embed_x, ctx_pos[:, :embed_x.shape[1]])
             attn_mask = nn.Transformer.generate_square_subsequent_mask(embedding.shape[1]).to(embedding.device)
             decoder_output = self.transformer_decoder(embedding,
                                                       is_causal=True,
                                                       mask=attn_mask)
-            decoder_output = decoder_output[:, -1:]
-            # melody_prob = self.melody_out(decoder_output)
-            # melody_token = sample(melody_prob, top_k_val=top_k, temperature=temperature)
-            # melody_sequence.append(melody_token[: None])
+            # decoder_output = self.res_decode(embed_x_with_pos=embed_x,
+            #                                  x=None,
+            #                                  ctx_pos=ctx_pos[:, :embed_x.shape[1]])
 
+            decoder_output = decoder_output[:, -1:]
             next_token = self.baby_llm.inference(memory=decoder_output,
-                                                 # melody=melody_token,
-                                                 refine_fn=refine_fn,
-                                                 activation=activation,
                                                  temperature=temperature,
                                                  top_k=top_k)
 
-            next_token, activation = refine_fn(next_token[:, None], activation=activation)
+            next_token = next_token[:, None]
             decoded_sequence.append(next_token)
             embed_x = torch.concat([embed_x,
-                                    self.input_embed(next_token, padding=False)], 1)
+                                    self.input_embedding(next_token, padding=False)], 1)
 
         return torch.concat(decoded_sequence, 1)
 

@@ -29,6 +29,14 @@ def midi2tokens(model, x):
     tokens = tokens.squeeze(0).cpu().numpy()
     return tokens
 
+def midi_2_token(model, data):
+    onsets = data >= 1000
+    end = data < 0
+    activations = (data - onsets * 1000) / 8.
+    x = np.stack([activations, onsets, end], 0)
+    tokens = midi2tokens(model, x)
+    return tokens
+
 
 def get_model():
     model = Model(modes=["chords",

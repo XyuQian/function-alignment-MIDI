@@ -12,12 +12,11 @@ import typing as tp
 
 import torch
 from torch import nn
-from tqdm import tqdm
 
-from shoelace.audiocraft.utils import utils
-from shoelace.audiocraft.modules.streaming import StreamingModule, State
-from shoelace.adapt_musicgen.transformer_air import StreamingTransformer, create_norm_fn
-from shoelace.audiocraft.modules.conditioners import (
+from ..utils import utils
+from ..modules.streaming import StreamingModule, State
+from ..modules.transformer import StreamingTransformer, create_norm_fn
+from ..modules.conditioners import (
     ConditionFuser,
     ClassifierFreeGuidanceDropout,
     AttributeDropout,
@@ -25,8 +24,9 @@ from shoelace.audiocraft.modules.conditioners import (
     ConditioningAttributes,
     ConditionType,
 )
-from shoelace.audiocraft.modules.codebooks_patterns import CodebooksPatternProvider
-from shoelace.audiocraft.modules.activations import get_activation_fn
+from ..modules.codebooks_patterns import CodebooksPatternProvider
+from ..modules.activations import get_activation_fn
+
 
 logger = logging.getLogger(__name__)
 ConditionTensors = tp.Dict[str, ConditionType]
@@ -97,7 +97,6 @@ def init_layer(m: nn.Module,
 class ScaledEmbedding(nn.Embedding):
     """Boost learning rate for embeddings (with `scale`).
     """
-
     def __init__(self, *args, lr=None, **kwargs):
         super().__init__(*args, **kwargs)
         self.lr = lr
@@ -142,7 +141,6 @@ class LMModel(StreamingModule):
         two_step_cfg (bool): Whether to run classifier free-guidance with 2 distinct steps.
         **kwargs: Additional parameters for the transformer encoder.
     """
-
     def __init__(self, pattern_provider: CodebooksPatternProvider, condition_provider: ConditioningProvider,
                  fuser: ConditionFuser, n_q: int = 8, card: int = 1024, dim: int = 128, num_heads: int = 8,
                  hidden_scale: int = 4, norm: str = 'layer_norm', norm_first: bool = False,
@@ -222,15 +220,7 @@ class LMModel(StreamingModule):
     def num_codebooks(self) -> int:
         return self.n_q
 
-    def yy_generate(self, emb_fn, sequence: torch.Tensor,
-                conditions: tp.List[ConditioningAttributes],
-                condition_tensors: tp.Optional[ConditionTensors] = None) -> torch.Tensor:
-        return self.forward(emb_fn=emb_fn,
-                            sequence=sequence,
-                            conditions=conditions,
-                            condition_tensors=condition_tensors)
-
-    def forward(self, emb_fn, sequence: torch.Tensor,
+    def forward(self, sequence: torch.Tensor,
                 conditions: tp.List[ConditioningAttributes],
                 condition_tensors: tp.Optional[ConditionTensors] = None) -> torch.Tensor:
         """Apply language model on sequence and conditions.
@@ -250,23 +240,21 @@ class LMModel(StreamingModule):
         B, K, S = sequence.shape
         assert K == self.num_codebooks, 'Sequence shape must match the specified number of codebooks'
         input_ = sum([self.emb[k](sequence[:, k]) for k in range(K)])
-
-        if condition_tensors is None:
-            assert not self._is_streaming, "Conditions tensors should be precomputed when streaming."
-            # apply dropout modules
-            conditions = self.cfg_dropout(conditions)
-            conditions = self.att_dropout(conditions)
-            tokenized = self.condition_provider.tokenize(conditions)
-            # encode conditions and fuse, both have a streaming cache to not recompute when generating.
-            condition_tensors = self.condition_provider(tokenized)
-
-        else:
-            assert not conditions, "Shouldn't pass both conditions and condition_tensors."
-
-        input_, cross_attention_input = self.fuser(input_, condition_tensors)
-        # emb_fn.set_uncond_cross_attention(uncond_cross_attetion_input)
-
-        out = self.transformer(emb_fn, input_, cross_attention_src=cross_attention_input)
+        # if condition_tensors is None:
+        #     assert not self._is_streaming, "Conditions tensors should be precomputed when streaming."
+        #     # apply dropout modules
+        #     conditions = self.cfg_dropout(conditions)
+        #     conditions = self.att_dropout(conditions)
+        #     tokenized = self.condition_provider.tokenize(conditions)
+        #     # encode conditions and fuse, both have a streaming cache to not recompute when generating.
+        #     condition_tensors = self.condition_provider(tokenized)
+        # else:
+        #     assert not conditions, "Shouldn't pass both conditions and condition_tensors."
+        #
+        # input_, cross_attention_input = self.fuser(input_, condition_tensors)
+        #
+        # out = self.transformer(input_, cross_attention_src=cross_attention_input)
+        out = yield from self.transformer(input_, cross_attention_src=None)
         if self.out_norm:
             out = self.out_norm(out)
         logits = torch.stack([self.linears[k](out) for k in range(K)], dim=1)  # [B, K, S, card]
@@ -278,7 +266,7 @@ class LMModel(StreamingModule):
         return logits  # [B, K, S, card]
 
     def compute_predictions(
-            self, embed_fn, codes: torch.Tensor,
+            self, codes: torch.Tensor,
             conditions: tp.List[ConditioningAttributes],
             condition_tensors: tp.Optional[ConditionTensors] = None) -> LMOutput:
         """Given an input tensor of codes [B, K, T] and list of conditions, runs the model
@@ -308,11 +296,9 @@ class LMModel(StreamingModule):
         sequence_codes, sequence_indexes, sequence_mask = pattern.build_pattern_sequence(
             codes, self.special_token_id, keep_only_valid_steps=True
         )
-
         # apply model on pattern sequence
         model = self if self._fsdp is None else self._fsdp
-
-        logits = model(embed_fn, sequence_codes, conditions, condition_tensors)  # [B, K, S, card]
+        logits = yield from model(sequence_codes, conditions, condition_tensors)  # [B, K, S, card]
         # map back the logits on pattern sequence to logits on original codes: [B, K, S, card] -> [B, K, T, card]
         # and provide the corresponding mask over invalid positions of tokens
         logits = logits.permute(0, 3, 1, 2)  # [B, card, K, S]
@@ -322,11 +308,9 @@ class LMModel(StreamingModule):
         )
         logits = logits.permute(0, 2, 3, 1)  # [B, K, T, card]
         logits_mask = logits_mask[None, :, :].expand(B, -1, -1)  # [K, T] -> [B, K, T]
-
         return LMOutput(logits, logits_mask)
 
     def _sample_next_token(self,
-                           emb_fn,
                            sequence: torch.Tensor,
                            cfg_conditions: CFGConditions,
                            unconditional_state: State,
@@ -334,8 +318,7 @@ class LMModel(StreamingModule):
                            temp: float = 1.0,
                            top_k: int = 0,
                            top_p: float = 0.0,
-                           cfg_coef: tp.Optional[float] = None,
-                           rng=None) -> torch.Tensor:
+                           cfg_coef: tp.Optional[float] = None) -> torch.Tensor:
         """Sample next token from the model given a sequence and a set of conditions. The model supports
         multiple sampling strategies (greedy sampling, softmax, top-k, top-p...).
 
@@ -359,10 +342,10 @@ class LMModel(StreamingModule):
         if self.two_step_cfg and cfg_conditions != {}:
             assert isinstance(cfg_conditions, tuple)
             condition_tensors, null_condition_tensors = cfg_conditions
-            cond_logits = model(emb_fn, sequence, conditions=[], condition_tensors=condition_tensors)
+            cond_logits = model(sequence, conditions=[], condition_tensors=condition_tensors)
             state = self.get_streaming_state()
             self.set_streaming_state(unconditional_state)
-            uncond_logits = model(emb_fn, sequence, conditions=[], condition_tensors=null_condition_tensors)
+            uncond_logits = model(sequence, conditions=[], condition_tensors=null_condition_tensors)
             unconditional_state.update(self.get_streaming_state())
             self.set_streaming_state(state)
             logits = uncond_logits + (cond_logits - uncond_logits) * self.cfg_coef
@@ -373,22 +356,18 @@ class LMModel(StreamingModule):
                 # Preparing for CFG, predicting both conditional and unconditional logits.
                 sequence = torch.cat([sequence, sequence], dim=0)
             all_logits = model(
-                emb_fn, sequence,
+                sequence,
                 conditions=[], condition_tensors=condition_tensors)
             if condition_tensors:
                 cond_logits, uncond_logits = all_logits.split(B, dim=0)  # [B, K, T, card]
                 logits = uncond_logits + (cond_logits - uncond_logits) * cfg_coef
-                logits = cond_logits
             else:
                 logits = all_logits
 
         logits = logits.permute(0, 1, 3, 2)  # [B, K, card, T]
         logits = logits[..., -1]  # [B x K x card]
 
-        # if rng is not None:
-        #    torch.manual_seed(rng)
         # Apply softmax for sampling if temp > 0. Else, do greedy sampling to avoid zero division error.
-
         if use_sampling and temp > 0.0:
             probs = torch.softmax(logits / temp, dim=-1)
             if top_p > 0.0:
@@ -402,95 +381,8 @@ class LMModel(StreamingModule):
 
         return next_token
 
-    def here(self):
-        print("lm_bk, here")
-
-    @torch.no_grad()
-    def ss_generate(self,
-                    emb_fn,
-                    conditions,
-                    prompt: tp.Optional[torch.Tensor] = None,
-                    num_samples: tp.Optional[int] = None,
-                    max_gen_len: int = 256,
-                    use_sampling: bool = True,
-                    temp: float = 1.0,
-                    top_k: int = 250,
-                    top_p: float = 0.0,
-                    cfg_coef: tp.Optional[float] = None,
-                    two_step_cfg: bool = False,
-                    remove_prompts: bool = False,
-                    check: bool = False,
-                    callback: tp.Optional[tp.Callable[[int, int], None]] = None
-                    ) -> torch.Tensor:
-
-        assert not self.training, "generation shouldn't be used in training mode."
-        first_param = next(iter(self.parameters()))
-        device = first_param.device
-
-        conditions = self.cfg_dropout(conditions)
-        conditions = self.att_dropout(conditions)
-        tokenized = self.condition_provider.tokenize(conditions)
-        # encode conditions and fuse, both have a streaming cache to not recompute when generating.
-        condition_tensors = self.condition_provider(tokenized)
-
-        if prompt is None:
-            assert num_samples > 0
-            prompt = torch.zeros((num_samples, self.num_codebooks, 0), dtype=torch.long, device=device)
-
-        B, K, T = prompt.shape
-        start_offset = T
-        assert start_offset < max_gen_len
-
-        pattern = self.pattern_provider.get_pattern(max_gen_len)
-        unknown_token = -1
-        gen_codes = torch.full((B, K, max_gen_len), unknown_token, dtype=torch.long, device=device)
-        gen_codes[..., :start_offset] = prompt
-        gen_sequence, indexes, mask = pattern.build_pattern_sequence(gen_codes, self.special_token_id)
-        start_offset_sequence = pattern.get_first_step_with_timesteps(start_offset)
-        assert start_offset_sequence is not None
-        gen_sequence_len = gen_sequence.shape[-1]
-        print(start_offset_sequence, gen_sequence_len)
-        for offset in tqdm(range(start_offset_sequence, gen_sequence_len),
-                           total=gen_sequence_len - start_offset_sequence,
-                           desc=f"inference"):
-
-            embed_fn = emb_fn(idx=(0, offset), mode="update_interval")
-
-            curr_sequence = gen_sequence[..., :offset]
-            # print(gen_sequence.shape, curr_sequence.shape)
-            logits = self.forward(
-                embed_fn, curr_sequence,
-                conditions=[], condition_tensors=condition_tensors)
-
-            logits = logits.permute(0, 1, 3, 2)  # [B, K, card, T]
-            logits = logits[..., -1]  # [B x K x card]
-
-            if use_sampling and temp > 0.0:
-                probs = torch.softmax(logits / temp, dim=-1)
-                if top_p > 0.0:
-                    next_token = utils.sample_top_p(probs, p=top_p)
-                elif top_k > 0:
-                    next_token = utils.sample_top_k(probs, k=top_k)
-                else:
-                    next_token = utils.multinomial(probs, num_samples=1)
-            else:
-                next_token = torch.argmax(logits, dim=-1, keepdim=True)
-
-            valid_mask = mask[..., offset:offset + 1].expand(B, -1, -1)
-            next_token[~valid_mask] = self.special_token_id
-            gen_sequence[..., offset:offset + 1] = torch.where(
-                gen_sequence[..., offset:offset + 1] == unknown_token,
-                next_token, gen_sequence[..., offset:offset + 1]
-            )
-            gen_sequence[..., offset:offset + 1] = next_token
-
-        out_codes, out_indexes, out_mask = pattern.revert_pattern_sequence(gen_sequence, special_token=unknown_token)
-        assert (out_codes >= 0).all() and (out_codes <= self.card).all()
-        return out_codes
-
     @torch.no_grad()
     def generate(self,
-                 embed_fn,
                  prompt: tp.Optional[torch.Tensor] = None,
                  conditions: tp.List[ConditioningAttributes] = [],
                  num_samples: tp.Optional[int] = None,
@@ -589,9 +481,7 @@ class LMModel(StreamingModule):
             unconditional_state = self.get_streaming_state()
             prev_offset = 0
             gen_sequence_len = gen_sequence.shape[-1]  # gen_sequence shape is [B, K, S]
-            for offset in tqdm(range(start_offset_sequence, gen_sequence_len),
-                               total=gen_sequence_len - start_offset_sequence,
-                               desc=f"inference"):
+            for offset in range(start_offset_sequence, gen_sequence_len):
                 # get current sequence (note that the streaming API is providing the caching over previous offsets)
                 curr_sequence = gen_sequence[..., prev_offset:offset]
                 curr_mask = mask[None, ..., prev_offset:offset].expand(B, -1, -1)
@@ -601,36 +491,32 @@ class LMModel(StreamingModule):
                     # should never happen as gen_sequence is filled progressively
                     assert not (curr_sequence == unknown_token).any()
                 # sample next token from the model, next token shape is [B, K, 1]
-                embed_fn = embed_fn(idx=(prev_offset, offset), mode="update_interval")
-                next_token = self._sample_next_token(embed_fn,
-                                                     curr_sequence, cfg_conditions, unconditional_state, use_sampling,
-                                                     temp, top_k, top_p,
-                                                     cfg_coef=cfg_coef, rng=prev_offset)
+                next_token = self._sample_next_token(
+                    curr_sequence, cfg_conditions, unconditional_state, use_sampling, temp, top_k, top_p,
+                    cfg_coef=cfg_coef)
                 # ensure the tokens that should be masked are properly set to special_token_id
                 # as the model never output special_token_id
-                valid_mask = mask[..., offset:offset + 1].expand(B, -1, -1)
+                valid_mask = mask[..., offset:offset+1].expand(B, -1, -1)
                 next_token[~valid_mask] = self.special_token_id
                 # ensure we don't overwrite prompt tokens, we only write over unknown tokens
                 # (then mask tokens should be left as is as well, which is correct)
-                gen_sequence[..., offset:offset + 1] = torch.where(
-                    gen_sequence[..., offset:offset + 1] == unknown_token,
-                    next_token, gen_sequence[..., offset:offset + 1]
+                gen_sequence[..., offset:offset+1] = torch.where(
+                    gen_sequence[..., offset:offset+1] == unknown_token,
+                    next_token, gen_sequence[..., offset:offset+1]
                 )
                 prev_offset = offset
                 if callback is not None:
                     callback(1 + offset - start_offset_sequence, gen_sequence_len - start_offset_sequence)
-                '''if embed_fn.first_step:
-                    embed_fn.first_step = False'''
         unconditional_state.clear()
+
         # ensure sequence has been entirely filled
         assert not (gen_sequence == unknown_token).any()
         # ensure gen_sequence pattern and mask are matching
         # which means the gen_sequence is valid according to the pattern
         assert (
-                gen_sequence == torch.where(mask[None, ...].expand(B, -1, -1), gen_sequence, self.special_token_id)
+            gen_sequence == torch.where(mask[None, ...].expand(B, -1, -1), gen_sequence, self.special_token_id)
         ).all()
         # get back the codes, trimming the prompt if needed and cutting potentially incomplete timesteps
-
         out_codes, out_indexes, out_mask = pattern.revert_pattern_sequence(gen_sequence, special_token=unknown_token)
 
         # sanity checks over the returned codes and corresponding masks

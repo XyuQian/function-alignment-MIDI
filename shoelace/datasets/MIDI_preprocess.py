@@ -4,24 +4,25 @@ import pretty_midi
 import numpy as np
 import h5py
 
-
-def midi_to_matrix(path, res=50, mode="melody"):
-    try:
-        midi_data = pretty_midi.PrettyMIDI(path)
-    except:
-        return None
+def midi_to_matrix(path, midi_data, mel_tag, res=50, mode="melody"):
+    if midi_data is None:
+        try:
+            midi_data = pretty_midi.PrettyMIDI(path)
+        except:
+            return None
     max_time = -1
     outs = []
     melody = []
     for instrument in midi_data.instruments:
-        assert not instrument.is_drum
+        if instrument.is_drum:
+            continue
         for note in instrument.notes:
 
-            if instrument.name == "MELODY":
+            if instrument.name == mel_tag:
                 melody.append([note.pitch, note.start, note.end, note.velocity])
             elif mode == "acc":
                 outs.append([note.pitch, note.start, note.end, note.velocity])
-            if mode == "melody" and instrument.name == "MELODY":
+            if mode == "melody" and instrument.name == mel_tag:
                 outs.append([note.pitch, note.start, note.end, note.velocity])
             if max_time < note.end:
                 max_time = note.end

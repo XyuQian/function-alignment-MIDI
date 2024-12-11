@@ -5,7 +5,7 @@ import re
 import torch
 import json
 from .MIDI_preprocess import midi_to_matrix, load_chords
-from .MIDI2tokens import remove_sil, midi2tokens, get_model
+from .MIDI2tokens import remove_sil, midi_2_token, get_model
 from shoelace.utils.encodec_utils import extract_rvq
 import librosa
 import h5py
@@ -13,13 +13,7 @@ import h5py
 device = "cuda"
 
 
-def midi_2_token(model, data):
-    onsets = data >= 1000
-    end = data < 0
-    activations = (data - onsets * 1000) / 8.
-    x = np.stack([activations, onsets, end], 0)
-    tokens = midi2tokens(model, x)
-    return tokens
+
 
 def decode_unicode_string(unicode_string):
     # Find all occurrences of #UXXXX and replace them with actual Unicode characters
@@ -56,9 +50,6 @@ def process_data(file_lst_path, output_path):
             _, st, ed = remove_sil(acc_data + melody_data)
             acc_midi_tokens = midi_2_token(midi_rvq, acc_data[st:ed])
             melody_midi_tokens = midi_2_token(midi_rvq, melody_data[st:ed])
-
-
-
 
             melody = melody[st:ed]
             melody = melody[:int(len(melody)) // scale * scale]

@@ -14,13 +14,13 @@ import typing as tp
 
 import torch
 
-from shoelace.audiocraft.models.encodec import CompressionModel
-from shoelace.adapt_musicgen.lm_air import LMModel
-from shoelace.adapt_musicgen.builders_air import get_debug_compression_model, get_debug_lm_model
-from shoelace.adapt_musicgen.loaders_air import load_compression_model, load_lm_model, HF_MODEL_CHECKPOINTS_MAP
-from shoelace.audiocraft.data.audio_utils import convert_audio
-from shoelace.audiocraft.modules.conditioners import ConditioningAttributes, WavCondition
-from shoelace.audiocraft.utils.autocast import TorchAutocast
+from .encodec import CompressionModel
+from .lm import LMModel
+from .builders import get_debug_compression_model, get_debug_lm_model
+from .loaders import load_compression_model, load_lm_model, HF_MODEL_CHECKPOINTS_MAP
+from ..data.audio_utils import convert_audio
+from ..modules.conditioners import ConditioningAttributes, WavCondition
+from ..utils.autocast import TorchAutocast
 
 
 MelodyList = tp.List[tp.Optional[torch.Tensor]]
@@ -46,7 +46,6 @@ class MusicGen:
         self.generation_params: dict = {}
         self.set_generation_params(duration=15)  # 15 seconds by default
         self._progress_callback: tp.Optional[tp.Callable[[int, int], None]] = None
-        print("load....musicgen bk")
         if self.device.type == 'cpu':
             self.autocast = TorchAutocast(enabled=False)
         else:
@@ -307,7 +306,6 @@ class MusicGen:
             # generate by sampling from LM, simple case.
             with self.autocast:
                 gen_tokens = self.lm.generate(
-                    lambda a1, a2 : lambda b1 : lambda c1, c2, c3 : 0,
                     prompt_tokens, attributes,
                     callback=callback, max_gen_len=total_gen_len, **self.generation_params)
 

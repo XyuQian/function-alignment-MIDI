@@ -21,12 +21,13 @@ import torch.nn as nn
 from torch.nn import functional as F
 from torch.utils.checkpoint import checkpoint as torch_checkpoint
 from xformers import ops
+from torch import Tensor
+from typing import Any, Callable, Optional, Union
 
-from ..audiocraft.modules.rope import RotaryEmbedding
-from ..audiocraft.modules.streaming import StreamingModule
+from .rope import RotaryEmbedding
+from .streaming import StreamingModule
 
 _efficient_attention_backend: str = 'torch'
-import math
 
 
 def set_efficient_attention_backend(backend: str = 'torch'):
@@ -202,12 +203,13 @@ class StreamingMultiheadAttention(StreamingModule):
             kv_dim = (embed_dim // num_heads) * num_kv
             out_dim += 2 * kv_dim
             in_proj = nn.Linear(embed_dim, out_dim, bias=bias, **factory_kwargs)
-
             self.layers_for_finetune = {
                 "q_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs),
                 "k_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs),
                 "v_proj": nn.Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
             }
+
+
 
             # We try to follow the default PyTorch MHA convention, to easily compare results.
             self.in_proj_weight = in_proj.weight
@@ -231,6 +233,7 @@ class StreamingMultiheadAttention(StreamingModule):
             self.q_layer_norm = nn.LayerNorm(ln_dim)
             self.k_layer_norm = nn.LayerNorm(ln_dim)
 
+
     def init_qkv(self):
         self.q_proj = self.layers_for_finetune["q_proj"]
         self.k_proj = self.layers_for_finetune["k_proj"]
@@ -248,6 +251,7 @@ class StreamingMultiheadAttention(StreamingModule):
             self.q_proj.bias.data = self.in_proj_bias.data[:dim]
             self.k_proj.bias.data = self.in_proj_bias.data[dim: 2 * dim]
             self.v_proj.bias.data = self.in_proj_bias.data[2 * dim:]
+
 
     def _load_from_state_dict(self, state_dict, prefix, *args, **kwargs):
         if not self.custom:
@@ -343,7 +347,7 @@ class StreamingMultiheadAttention(StreamingModule):
 
     def forward(self, query: torch.Tensor, key: torch.Tensor, value: torch.Tensor,
                 key_padding_mask=None, need_weights=False, attn_mask=None,
-                average_attn_weights=True, is_causal=False, emb_fn=None, return_qkv=False):
+                average_attn_weights=True, is_causal=False):
         assert attn_mask is None
         assert not is_causal, ("new param added in torch 2.0.1 not supported, "
                                "use the causal args in the constructor.")
@@ -363,14 +367,11 @@ class StreamingMultiheadAttention(StreamingModule):
             assert query.shape[1] == key.shape[1], "Causal only for same length query / key / value"
             assert value.shape[1] == key.shape[1], "Causal only for same length query / key / value"
             attn_mask = self._get_mask(query.shape[1], query.device, query.dtype)
-            # attn_mask = None
-        # assert attn_mask is None
 
         if self.custom:
             # custom implementation
             assert need_weights is False
             assert key_padding_mask is None
-
             if self.cross_attention:
                 # Different queries, keys, values, we have to spit manually the weights
                 # before applying the linear.
@@ -382,12 +383,9 @@ class StreamingMultiheadAttention(StreamingModule):
                     bias_k = self.in_proj_bias[dim: 2 * dim]
                     bias_v = self.in_proj_bias[2 * dim:]
                 q = nn.functional.linear(query, self.in_proj_weight[:dim], bias_q)
-                # # todo: when streaming, we could actually save k, v and check the shape actually match.
+                # todo: when streaming, we could actually save k, v and check the shape actually match.
                 k = nn.functional.linear(key, self.in_proj_weight[dim: 2 * dim], bias_k)
                 v = nn.functional.linear(value, self.in_proj_weight[2 * dim:], bias_v)
-
-
-
                 if self.qk_layer_norm is True:
                     q = self.q_layer_norm(q)
                     k = self.k_layer_norm(k)
@@ -397,12 +395,8 @@ class StreamingMultiheadAttention(StreamingModule):
                     # profiling breaks that propertysomehow.
                     assert query is key, "specialized implementation"
                     assert value is key, "specialized implementation"
-
                 # projected = nn.functional.linear(query, self.in_proj_weight, self.in_proj_bias)
-
-
                 projected = torch.concat([self.q_proj(query), self.k_proj(query), self.v_proj(query)], -1)
-
 
                 if self.kv_repeat == 1:
                     if time_dim == 2:
@@ -411,7 +405,6 @@ class StreamingMultiheadAttention(StreamingModule):
                         bound_layout = "b t p h d"
                     packed = rearrange(projected, f"b t (p h d) -> {bound_layout}", p=3, h=self.num_heads)
                     q, k, v = ops.unbind(packed, dim=2)
-
                 else:
                     embed_dim = self.embed_dim
                     per_head_dim = (embed_dim // self.num_heads)
@@ -421,45 +414,31 @@ class StreamingMultiheadAttention(StreamingModule):
                     end = start + per_head_dim * kv_heads
                     k = projected[:, :, start: end]
                     v = projected[:, :, end:]
-
                     q = rearrange(q, f"b t (h d) -> {layout}", h=self.num_heads)
                     k = rearrange(k, f"b t (h d) -> {layout}", h=kv_heads)
                     v = rearrange(v, f"b t (h d) -> {layout}", h=kv_heads)
 
-                assert self.qk_layer_norm is False
                 if self.qk_layer_norm is True:
                     assert self.kv_repeat == 1
                     q, k = [rearrange(x, f"{layout} -> b t (h d)") for x in [q, k]]
                     q = self.q_layer_norm(q)
                     k = self.k_layer_norm(k)
                     q, k = [rearrange(x, f"b t (h d) -> {layout}", h=self.num_heads) for x in [q, k]]
-
-                assert not self.rope
                 if self.rope:
                     q, k = self._apply_rope(q, k)
                 k, v = self._complete_kv(k, v)
-
-                assert self.kv_repeat <= 1
                 if self.kv_repeat > 1:
                     k = expand_repeated_kv(k, self.kv_repeat)
                     v = expand_repeated_kv(v, self.kv_repeat)
-
             if self.attention_as_float32:
                 q, k, v = [x.float() for x in [q, k, v]]
-            if return_qkv:
-                sq, sk, sv = q, k, v
-
-            debug = q
-
             if self.memory_efficient:
                 p = self.dropout if self.training else 0
                 if _efficient_attention_backend == 'torch':
                     x = torch.nn.functional.scaled_dot_product_attention(
                         q, k, v, is_causal=attn_mask is not None, dropout_p=p)
-
                 else:
                     x = ops.memory_efficient_attention(q, k, v, attn_mask, p=p)
-
             else:
                 # We include the dot product as float32, for consistency
                 # with the other implementations that include that step
@@ -484,10 +463,11 @@ class StreamingMultiheadAttention(StreamingModule):
                 x = torch.einsum(f"b h t k, {key_layout} -> {layout}", w, v)
             x = x.to(dtype)
             x = rearrange(x, f"{layout} -> b t (h d)", h=self.num_heads)
-            x = self.out_proj(x + emb_fn(query, debug))
-            # res = emb_fn(tag, "o", x)
-            # x = res if res is not None else x
-
+            debug = None
+            wrap_attn_output = [x, debug]
+            yield wrap_attn_output, query, q
+            x = wrap_attn_output[0]
+            x = self.out_proj(x)
         else:
             key, value = self._complete_kv(key, value)
             if self.attention_as_float32:
@@ -497,9 +477,7 @@ class StreamingMultiheadAttention(StreamingModule):
                 need_weights, attn_mask, average_attn_weights)
             x = x.to(dtype)
 
-        if return_qkv:
-            return sq, sk, sv, x
-        return x, debug
+        return x, None
 
 
 class StreamingTransformerLayer(nn.TransformerEncoderLayer):
@@ -595,60 +573,56 @@ class StreamingTransformerLayer(nn.TransformerEncoderLayer):
         self.self_attn.init_qkv()
 
     def _cross_attention_block(self, src: torch.Tensor,
-                               cross_attention_src: torch.Tensor, emb_fn) -> torch.Tensor:
+                               cross_attention_src: torch.Tensor) -> torch.Tensor:
         assert self.cross_attention is not None
         # queries are from src, keys and values from cross_attention_src.
         x = self.cross_attention(
-            src, cross_attention_src, cross_attention_src, emb_fn=emb_fn, need_weights=False)[0]
+            src, cross_attention_src, cross_attention_src, need_weights=False)[0]
         return self.dropout_cross(x)  # type: ignore
 
-    def forward(self, emb_fn, src: torch.Tensor, src_mask: tp.Optional[torch.Tensor] = None,  # type: ignore
+
+    def _sa_block(
+            self,
+            x: Tensor,
+            attn_mask: Optional[Tensor],
+            key_padding_mask: Optional[Tensor],
+            is_causal: bool = False,
+    ) -> Tensor:
+        x = yield from self.self_attn(
+            x,
+            x,
+            x,
+            attn_mask=attn_mask,
+            key_padding_mask=key_padding_mask,
+            need_weights=False,
+            is_causal=is_causal,
+        )
+        return self.dropout1(x[0])
+
+    def forward(self, src: torch.Tensor, src_mask: tp.Optional[torch.Tensor] = None,  # type: ignore
                 src_key_padding_mask: tp.Optional[torch.Tensor] = None,
                 cross_attention_src: tp.Optional[torch.Tensor] = None):
-
-        if self.cross_attention is None:
-            assert cross_attention_src is None
-        else:
-            assert cross_attention_src is not None
-
+        # if self.cross_attention is None:
+        #     assert cross_attention_src is None
+        # else:
+        #     assert cross_attention_src is not None
         x = src
         if self.norm_first:
-            # x = x + self.layer_scale_1(
-            #    self._sa_block(self.norm1(x), src_mask, src_key_padding_mask))
-            nx = self.norm1(x)
-            x = x + self.layer_scale_1(
-                # self._sa_block(, src_mask, src_key_padding_mask))
-                self.dropout1(self.self_attn(nx, nx, nx,
-                                    emb_fn=emb_fn,
-                                     attn_mask=src_mask,
-                                     key_padding_mask=src_key_padding_mask,
-                                     need_weights=False, is_causal=False)[0]))
-            if cross_attention_src is not None and False:
-
+            dx = yield from self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
+            x = x + self.layer_scale_1(dx)
+            if cross_attention_src is not None:
                 x = x + self.layer_scale_cross(
                     self._cross_attention_block(
                         self.norm_cross(x), cross_attention_src))
-
             x = x + self.layer_scale_2(self._ff_block(self.norm2(x)))
         else:
-            # x = self.norm1(x + self.layer_scale_1(
-            #    self._sa_block(x, src_mask, src_key_padding_mask)))
-            nx = x
-            # dx = emb_fn(nx)
-
-            # self.self_attn(nx, nx, nx,
-            #                attn_mask=src_mask,
-            #                key_padding_mask=src_key_padding_mask,
-            #                need_weights=False, is_causal=False)[0] +
-
-
-            x = x + self.layer_scale_1(
-                # self._sa_block(, src_mask, src_key_padding_mask))
-                self.dropout1(dx))
-            if cross_attention_src is not None and False:
+            dx = yield from self._sa_block(x, src_mask, src_key_padding_mask)
+            x = self.norm1(x + self.layer_scale_1(
+                dx))
+            if cross_attention_src is not None:
                 x = self.norm_cross(
                     x + self.layer_scale_cross(
-                        self._cross_attention_block(src, cross_attention_src, emb_fn=emb_fn)))
+                        self._cross_attention_block(src, cross_attention_src)))
             x = self.norm2(x + self.layer_scale_2(self._ff_block(x)))
         return x
 
@@ -744,10 +718,11 @@ class StreamingTransformer(StreamingModule):
         for layer in self.layers:
             layer.init_qkv()
 
-    def _apply_layer(self, layer, emb_fn, *args, **kwargs):
+
+    def _apply_layer(self, layer, *args, **kwargs):
         method = self.checkpointing
         if method == 'none':
-            return layer(emb_fn, *args, **kwargs)
+            return layer(*args, **kwargs)
         elif method == 'torch':
             return torch_checkpoint(layer, *args, use_reentrant=False, **kwargs)
         elif method.startswith('xformers'):
@@ -775,7 +750,7 @@ class StreamingTransformer(StreamingModule):
         else:
             raise ValueError(f"Checkpointing method {method} is unknown.")
 
-    def forward(self, emb_fn, x: torch.Tensor, *args, **kwargs):
+    def forward(self, x: torch.Tensor, *args, **kwargs):
         B, T, C = x.shape
 
         if 'offsets' in self._streaming_state:
@@ -789,9 +764,8 @@ class StreamingTransformer(StreamingModule):
             pos_emb = create_sin_embedding(positions, C, max_period=self.max_period, dtype=x.dtype)
             x = x + self.positional_scale * pos_emb
 
-        for i, layer in enumerate(self.layers):
-
-            x = self._apply_layer(layer, emb_fn(i), x, *args, **kwargs)
+        for layer in self.layers:
+            x = yield from self._apply_layer(layer, x, *args, **kwargs)
 
         if self._is_streaming:
             self._streaming_state['offsets'] = offsets + T

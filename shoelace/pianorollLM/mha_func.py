@@ -3,22 +3,23 @@ from torch import Tensor
 import math
 import warnings
 from typing import Callable, List, Optional, Tuple, TYPE_CHECKING, Union
+
 if TYPE_CHECKING:
     from torch.types import _dtype as DType
 else:
     # The JIT doesn't understand Union, nor torch.dtype here
     DType = int
 
-from torch.nn.functional import has_torch_function, handle_torch_function, scaled_dot_product_attention,\
-linear, pad, softmax, dropout
+from torch.nn.functional import has_torch_function, handle_torch_function, scaled_dot_product_attention, \
+    linear, pad, softmax, dropout
 
 
 def _in_projection_packed(
-    q: Tensor,
-    k: Tensor,
-    v: Tensor,
-    w: Tensor,
-    b: Optional[Tensor] = None,
+        q: Tensor,
+        k: Tensor,
+        v: Tensor,
+        w: Tensor,
+        b: Optional[Tensor] = None,
 ) -> List[Tensor]:
     r"""Perform the in-projection step of the attention operation, using packed weights.
 
@@ -87,16 +88,17 @@ def _in_projection_packed(
             b_q, b_k, b_v = b.chunk(3)
         return linear(q, w_q, b_q), linear(k, w_k, b_k), linear(v, w_v, b_v)
 
+
 def _in_projection(
-    q: Tensor,
-    k: Tensor,
-    v: Tensor,
-    w_q: Tensor,
-    w_k: Tensor,
-    w_v: Tensor,
-    b_q: Optional[Tensor] = None,
-    b_k: Optional[Tensor] = None,
-    b_v: Optional[Tensor] = None,
+        q: Tensor,
+        k: Tensor,
+        v: Tensor,
+        w_q: Tensor,
+        w_k: Tensor,
+        w_v: Tensor,
+        b_q: Optional[Tensor] = None,
+        b_k: Optional[Tensor] = None,
+        b_v: Optional[Tensor] = None,
 ) -> Tuple[Tensor, Tensor, Tensor]:
     r"""Perform the in-projection step of the attention operation.
 
@@ -158,6 +160,7 @@ def _in_projection(
     # print(q.shape, k.shape, v.shape, w_q.weight.shape, w_q.bias.shape)
     return w_q(q), w_k(k), w_v(v),
 
+
 def _none_or_dtype(input: Optional[Tensor]) -> Optional[DType]:
     if input is None:
         return None
@@ -165,13 +168,14 @@ def _none_or_dtype(input: Optional[Tensor]) -> Optional[DType]:
         return input.dtype
     raise RuntimeError("input to _none_or_dtype() must be None or torch.Tensor")
 
+
 def _mha_shape_check(
-    query: Tensor,
-    key: Tensor,
-    value: Tensor,
-    key_padding_mask: Optional[Tensor],
-    attn_mask: Optional[Tensor],
-    num_heads: int,
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        key_padding_mask: Optional[Tensor],
+        attn_mask: Optional[Tensor],
+        num_heads: int,
 ):
     # Verifies the expected shape for `query, `key`, `value`, `key_padding_mask` and `attn_mask`
     # and returns if the input is batched or not.
@@ -217,7 +221,7 @@ def _mha_shape_check(
             if attn_mask.dim() == 3:
                 expected_shape = (num_heads, query.shape[0], key.shape[0])
                 assert (
-                    attn_mask.shape == expected_shape
+                        attn_mask.shape == expected_shape
                 ), f"Expected `attn_mask` shape to be {expected_shape} but got {attn_mask.shape}"
     else:
         raise AssertionError(
@@ -228,12 +232,12 @@ def _mha_shape_check(
 
 
 def _canonical_mask(
-    mask: Optional[Tensor],
-    mask_name: str,
-    other_type: Optional[DType],
-    other_name: str,
-    target_type: DType,
-    check_other: bool = True,
+        mask: Optional[Tensor],
+        mask_name: str,
+        other_type: Optional[DType],
+        other_name: str,
+        target_type: DType,
+        check_other: bool = True,
 ) -> Optional[Tensor]:
     if mask is not None:
         _mask_dtype = mask.dtype
@@ -254,33 +258,33 @@ def _canonical_mask(
             )
     return mask
 
+
 def multi_head_attention_forward(
-    query: Tensor,
-    key: Tensor,
-    value: Tensor,
-    embed_dim_to_check: int,
-    num_heads: int,
-    in_proj_weight: Optional[Tensor],
-    in_proj_bias: Optional[Tensor],
-    bias_k: Optional[Tensor],
-    bias_v: Optional[Tensor],
-    add_zero_attn: bool,
-    dropout_p: float,
-    out_proj_weight: Tensor,
-    out_proj_bias: Optional[Tensor],
-    training: bool = True,
-    key_padding_mask: Optional[Tensor] = None,
-    need_weights: bool = True,
-    attn_mask: Optional[Tensor] = None,
-    use_separate_proj_weight: bool = False,
-    q_proj_weight: Optional[Tensor] = None,
-    k_proj_weight: Optional[Tensor] = None,
-    v_proj_weight: Optional[Tensor] = None,
-    static_k: Optional[Tensor] = None,
-    static_v: Optional[Tensor] = None,
-    average_attn_weights: bool = True,
-    is_causal: bool = False,
-    emb_fn = None
+        query: Tensor,
+        key: Tensor,
+        value: Tensor,
+        embed_dim_to_check: int,
+        num_heads: int,
+        in_proj_weight: Optional[Tensor],
+        in_proj_bias: Optional[Tensor],
+        bias_k: Optional[Tensor],
+        bias_v: Optional[Tensor],
+        add_zero_attn: bool,
+        dropout_p: float,
+        out_proj_weight: Tensor,
+        out_proj_bias: Optional[Tensor],
+        training: bool = True,
+        key_padding_mask: Optional[Tensor] = None,
+        need_weights: bool = True,
+        attn_mask: Optional[Tensor] = None,
+        use_separate_proj_weight: bool = False,
+        q_proj_weight: Optional[Tensor] = None,
+        k_proj_weight: Optional[Tensor] = None,
+        v_proj_weight: Optional[Tensor] = None,
+        static_k: Optional[Tensor] = None,
+        static_v: Optional[Tensor] = None,
+        average_attn_weights: bool = True,
+        is_causal: bool = False,
 ) -> Tuple[Tensor, Optional[Tensor]]:
     r"""Forward method for MultiHeadAttention.
 
@@ -370,6 +374,7 @@ def multi_head_attention_forward(
         out_proj_weight,
         out_proj_bias,
     )
+
     if has_torch_function(tens_ops):
         return handle_torch_function(
             multi_head_attention_forward,
@@ -457,7 +462,7 @@ def multi_head_attention_forward(
             is_causal = False
 
     assert (
-        embed_dim == embed_dim_to_check
+            embed_dim == embed_dim_to_check
     ), f"was expecting embedding dimension of {embed_dim_to_check}, but got {embed_dim}"
     if isinstance(embed_dim, torch.Tensor):
         # embed_dim can be a tensor when JIT tracing
@@ -465,16 +470,16 @@ def multi_head_attention_forward(
     else:
         head_dim = embed_dim // num_heads
     assert (
-        head_dim * num_heads == embed_dim
+            head_dim * num_heads == embed_dim
     ), f"embed_dim {embed_dim} not divisible by num_heads {num_heads}"
     if use_separate_proj_weight:
         # allow MHA to have different embedding dimensions when separate projection weights are used
         assert (
-            key.shape[:2] == value.shape[:2]
+                key.shape[:2] == value.shape[:2]
         ), f"key's sequence and batch dims {key.shape[:2]} do not match value's {value.shape[:2]}"
     else:
         assert (
-            key.shape == value.shape
+                key.shape == value.shape
         ), f"key shape {key.shape} does not match value shape {value.shape}"
 
     #
@@ -482,18 +487,18 @@ def multi_head_attention_forward(
     #
     if not use_separate_proj_weight:
         assert (
-            in_proj_weight is not None
+                in_proj_weight is not None
         ), "use_separate_proj_weight is False but in_proj_weight is None"
         q, k, v = _in_projection_packed(query, key, value, in_proj_weight, in_proj_bias)
     else:
         assert (
-            q_proj_weight is not None
+                q_proj_weight is not None
         ), "use_separate_proj_weight is True but q_proj_weight is None"
         assert (
-            k_proj_weight is not None
+                k_proj_weight is not None
         ), "use_separate_proj_weight is True but k_proj_weight is None"
         assert (
-            v_proj_weight is not None
+                v_proj_weight is not None
         ), "use_separate_proj_weight is True but v_proj_weight is None"
         if in_proj_bias is None:
             b_q = b_k = b_v = None
@@ -556,10 +561,10 @@ def multi_head_attention_forward(
     else:
         # TODO finish disentangling control flow so we don't do in-projections when statics are passed
         assert (
-            static_k.size(0) == bsz * num_heads
+                static_k.size(0) == bsz * num_heads
         ), f"expecting static_k.size(0) of {bsz * num_heads}, but got {static_k.size(0)}"
         assert (
-            static_k.size(2) == head_dim
+                static_k.size(2) == head_dim
         ), f"expecting static_k.size(2) of {head_dim}, but got {static_k.size(2)}"
         k = static_k
     if static_v is None:
@@ -567,10 +572,10 @@ def multi_head_attention_forward(
     else:
         # TODO finish disentangling control flow so we don't do in-projections when statics are passed
         assert (
-            static_v.size(0) == bsz * num_heads
+                static_v.size(0) == bsz * num_heads
         ), f"expecting static_v.size(0) of {bsz * num_heads}, but got {static_v.size(0)}"
         assert (
-            static_v.size(2) == head_dim
+                static_v.size(2) == head_dim
         ), f"expecting static_v.size(2) of {head_dim}, but got {static_v.size(2)}"
         v = static_v
 
@@ -620,7 +625,7 @@ def multi_head_attention_forward(
         q_scaled = q * math.sqrt(1.0 / float(E))
 
         assert not (
-            is_causal and attn_mask is None
+                is_causal and attn_mask is None
         ), "FIXME: is_causal not implemented for need_weights"
 
         if attn_mask is not None:
@@ -638,8 +643,7 @@ def multi_head_attention_forward(
         attn_output = (
             attn_output.transpose(0, 1).contiguous().view(tgt_len * bsz, embed_dim)
         )
-        if emb_fn is not None:
-            attn_output = attn_output + emb_fn(query, q)
+
         attn_output = out_proj_weight(attn_output)
         attn_output = attn_output.view(tgt_len, bsz, attn_output.size(1))
 
@@ -673,11 +677,10 @@ def multi_head_attention_forward(
         attn_output = (
             attn_output.permute(2, 0, 1, 3).contiguous().view(bsz * tgt_len, embed_dim)
         )
-        if emb_fn is not None:
-            dt = emb_fn(query.transpose(0, 1), q)
-            if dt is not None:
-                dt = dt.view(bsz, tgt_len, embed_dim).transpose(0, 1).flatten(0, 1)
-                attn_output = attn_output + dt
+        debug = None
+        wrap_attn_output = [attn_output.view(bsz, tgt_len, embed_dim), debug]
+        yield wrap_attn_output, query, q
+        attn_output = wrap_attn_output[0].view(bsz * tgt_len, embed_dim)
         attn_output = out_proj_weight(attn_output)
         attn_output = attn_output.view(tgt_len, bsz, attn_output.size(1))
         if not is_batched:

@@ -101,12 +101,9 @@ class TransformerEncoderLayer(Module):
         self_attn.k_proj = k_proj_lora
         self_attn.v_proj = v_proj_lora
 
-
-
     def forward(
             self,
             src,
-            fn,
             src_mask: Optional[Tensor] = None,
             src_key_padding_mask: Optional[Tensor] = None,
             is_causal: bool = False,
@@ -166,9 +163,9 @@ class TransformerEncoderLayer(Module):
                 for m in self.modules()
         ):
             why_not_sparsity_fast_path = "forward pre-/hooks are attached to the module"
-        #disable
+        # disable
         if False:
-        # if not why_not_sparsity_fast_path:
+            # if not why_not_sparsity_fast_path:
             tensor_args = (
                 src,
                 self.self_attn.in_proj_weight,
@@ -240,23 +237,15 @@ class TransformerEncoderLayer(Module):
             hidden_state = self.norm1(x)
             x = x + self._sa_block(
                 hidden_state, src_mask, src_key_padding_mask, is_causal=is_causal,
-                emb_fn=fn,
             )
             x = x + self._ff_block(self.norm2(x))
         else:
             hidden_state = x
-            # n = len(x)
-            # extend_x = x.flatten(0, 1).unsqueeze(1)
-            # prompt = prompt.unsqueeze(0).repeat(len(extend_x), 1, 1)
-            # comb_x = torch.concat([prompt, extend_x], 1)
-            # comb_x = self._sa_block(comb_x, None, None, is_causal=False)
-            # dx = comb_x[:, -1].view(n, -1, comb_x.shape[-1]) * gate
-
+            dx = yield from self._sa_block(hidden_state, src_mask, src_key_padding_mask,
+                                           is_causal=is_causal)
             x = self.norm1(
                 x
-                + self._sa_block(hidden_state, src_mask, src_key_padding_mask,
-                                 emb_fn=fn,
-                                 is_causal=is_causal)
+                + dx
             )
             x = self.norm2(x + self._ff_block(x))
         return x, hidden_state
@@ -268,9 +257,8 @@ class TransformerEncoderLayer(Module):
             attn_mask: Optional[Tensor],
             key_padding_mask: Optional[Tensor],
             is_causal: bool = False,
-            emb_fn = None,
     ) -> Tensor:
-        x = self.self_attn(
+        x = yield from self.self_attn(
             x,
             x,
             x,
@@ -278,9 +266,8 @@ class TransformerEncoderLayer(Module):
             key_padding_mask=key_padding_mask,
             need_weights=False,
             is_causal=is_causal,
-            emb_fn=emb_fn
-        )[0]
-        return self.dropout1(x)
+        )
+        return self.dropout1(x[0])
 
     # feed forward block
     def _ff_block(self, x: Tensor) -> Tensor:
@@ -348,10 +335,8 @@ class TransformerEncoder(Module):
         for layer in self.layers:
             layer.prepare_for_lora(mode)
 
-    def encode2roll(
+    def forward(
             self,
-            melody_mask,
-            target,
             src,
             mask: Optional[Tensor] = None,
             src_key_padding_mask: Optional[Tensor] = None,
@@ -458,54 +443,15 @@ class TransformerEncoder(Module):
 
         seq_len = _get_seq_len(src, batch_first)
         is_causal = _detect_is_causal_mask(mask, is_causal, seq_len)
-        return {
-            "melody_mask": melody_mask,
-            "output": output,
-            "target": target,
-            "input": output,
-            "mask": mask,
-            "is_causal": is_causal,
-            "src_key_padding_mask_for_layers": src_key_padding_mask_for_layers,
-            "convert_to_nested": convert_to_nested,
-            "fn": None
-        }
-
-    def roll(self, param_dict, layer_idx, fn=None) -> Tensor:
-        output, hidden_state = self.layers[layer_idx](
-            param_dict["output"] if layer_idx > 0 else param_dict["input"],
-            src_mask=param_dict["mask"],
-            is_causal=param_dict["is_causal"],
-            src_key_padding_mask=param_dict["src_key_padding_mask_for_layers"],
-            fn=fn
-        )
-        param_dict["output"] = output
-        return param_dict
-
-    def roll2end(self, param_dict) -> Tensor:
-        output = param_dict["output"]
-        # print(torch.max(output), torch.min(output))
-        if param_dict["convert_to_nested"]:
-            output = output.to_padded_tensor(0.0, param_dict["src"].size())
-
+        for layer_idx in range(len(self.layers)):
+            output, hidden_state = yield from self.layers[layer_idx](
+                output,
+                src_mask=mask,
+                is_causal=is_causal,
+                src_key_padding_mask=src_key_padding_mask_for_layers
+            )
+        if convert_to_nested:
+            output = output.to_padded_tensor(0.0, src.size())
         if self.norm is not None:
             output = self.norm(output)
         return output
-
-    def forward(
-            self,
-            src: Tensor,
-            mask: Optional[Tensor] = None,
-            src_key_padding_mask: Optional[Tensor] = None,
-            is_causal: Optional[bool] = None,
-    ) -> Tensor:
-
-        param_dict = self.encode2roll(
-            src=src,
-            mask=mask,
-            src_key_padding_mask=src_key_padding_mask,
-            is_causal=is_causal,
-            target=None,
-        )
-        for i in range(len(self.layers)):
-            param_dict = self.roll(param_dict, i)
-        return self.roll2end(param_dict)
