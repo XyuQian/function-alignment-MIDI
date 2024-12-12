@@ -107,7 +107,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
 
             mean_loss += (loss.item() / n_element)
 
-            if rank == 0 and i > 0 and i % 3100 == 0:
+            if rank == 0 and  i % 3100 == 0:
                 with torch.no_grad():
                     writer.add_scalar('train/mean_loss', mean_loss, step)
                     model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))

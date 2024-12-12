@@ -113,9 +113,7 @@ def collate_fn(batch):
     audio_data = torch.from_numpy(np.stack([b[1] for b in batch], 0)).long()
     # melody_data = torch.from_numpy(np.stack([b[2] for b in batch], 0)).long()
     audio_data = audio_data.transpose(1, 2)
-    return [
-        {"midi_seq": mel_data},
-        # "melody_seq": melody_data,
-        {"audio_seq": audio_data},
-        # "desc": [b[3] for b in batch]
-    ]
+    return {
+        "midi_seq": mel_data,
+        "audio_seq": audio_data
+    }

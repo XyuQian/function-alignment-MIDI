@@ -67,28 +67,10 @@ def get_midi_lm(device="cuda"):
     return midi_lm_peft
 
 
-def create_mask(a_len, b_len, device, mask_ratio=.5):
+def create_mask(a_len, b_len, device, mask_ratio=.7):
     mask_a = torch.zeros([a_len, b_len])
     mask = torch.rand_like(mask_a)
     mask_a[mask < mask_ratio] = float(-torch.inf)
-
-    # mask_val = mask_a + torch.arange(b_len + 1).unsqueeze(0)
-    # mask_idx = torch.argmax(mask_val, -1)
-    # if np.random.rand() < .5:
-    #     mask_idx, resort_mask_idx = torch.sort(mask_idx)
-    #     mask_a = mask_a[resort_mask_idx]
-    #
-    #
-    # mask_idx = torch.cummax(mask_idx, dim=0).values
-    # # print(mask_idx)
-    # mask_idx = mask_idx.unsqueeze(1).repeat(1, b_len)
-    # mask_seq_b = torch.arange(b_len)[None, :].repeat(a_len, 1) + 1
-    # mask_b = torch.where(mask_idx < mask_seq_b, 0, float(-torch.inf)).transpose(0, 1)
-    #
-    # # mask = torch.rand_like(mask_b)
-    # # mask_b[mask < mask_ratio*.5] = float(-torch.inf)
-    #
-    # mask_b = mask_b + float(-torch.inf)
     mask_b = torch.zeros_like(mask_a).transpose(0, 1) + float(-torch.inf)
     mask_a = F.pad(mask_a, (1, 0), "constant", 0)
     mask_b = F.pad(mask_b, (1, 0), "constant", 0)
@@ -103,14 +85,14 @@ class AudioLM(nn.Module):
         self.lm = mg.lm
         self.max_duration = sec
         self.frame_rate = frame_rate
+        self.autocast = mg.autocast
 
     def set_training(self):
         self.lm.train()
 
     def forward(self, audio_seq):
-        mg = self.musicgen
         lm = self.lm
-        with mg.autocast:
+        with self.autocast:
             out = yield from lm.compute_predictions(codes=audio_seq,
                                                     conditions=[None] * len(audio_seq))
         yield out
@@ -237,6 +219,7 @@ class MIDILM(nn.Module):
         self.lm = lm
         self.max_duration = sec
         self.frame_rate = frame_rate
+        self.autocast = None
 
     def loss_func(self, midi_seq, pred):
         loss_fn = nn.CrossEntropyLoss(ignore_index=512)
@@ -285,7 +268,9 @@ class Yinyang(nn.Module):
                 "low_rank_dim": 64,
                 "hidden_size": 2048,
                 "n_heads": 32,
-                "steps": 16
+                "steps": 16,
+                "seq_len": int(sec * 50 + 1),
+                "param_list": ["audio_seq"],
             },
             "MIDILM": {
                 "model": MIDILM,
@@ -293,7 +278,9 @@ class Yinyang(nn.Module):
                 "n_layers": 8,
                 "hidden_size": 1024,
                 "n_heads": 8,
-                "steps": 1
+                "steps": 1,
+                "seq_len": int(sec * 50 // 16),
+                "param_list": ["midi_seq"]
             },
         }
         skip_layers = {
@@ -301,17 +288,17 @@ class Yinyang(nn.Module):
             "MIDILM-AudioLM": [1, 6],
         }
         recipes = {
-            "vocals2mel":
+            "mel2vocals":
                 {
                     "models": ["AudioLM", "MIDILM"],
                     "bi": False,
                 },
             "vocals-mel":
                 {
-                    "models": ["AudioLM", "MIDILM"],
+                    "models": ["MIDILM", "AudioLM"],
                     "bi": True,
                 },
-            "mel2vocals":
+            "vocals2mel":
                 {
                     "models": ["MIDILM", "AudioLM"],
                     "bi": False,
@@ -369,28 +356,37 @@ class Yinyang(nn.Module):
         self.names = names
         self.n_skip_layer_pairs = n_skip_layer_pairs
         self.n_layers = model_factory[self.names[0]]["n_layers"]
+        self.seq_len = [model_factory[self.names[i]]["seq_len"] for i in range(len(self.models))]
+        self.param_list = [model_factory[self.names[i]]["param_list"] for i in range(len(self.models))]
         print_params(self)
 
     def set_config(self, device):
         for adapter in self.adapters:
             for ad in adapter:
                 ad.set_config(device)
+        self.cur_device = device
 
     def save_weights(self, path):
-        self.adapters.save_weights(path)
 
+        torch.save(self.adapters, path + ".adapters.pth")
         for i, model in enumerate(self.models):
             save_lora_weights(model, path + "." + self.names[i])
 
     def load_weights(self, path, device="cpu"):
-        self.adapters.load_weights(path, device)
+        self.adapters.load_weights(path + ".adapters.pth", device)
         for model in self.models:
             model.load_weights(path, device)
 
-    def stitch(self, model_gen, adapters, n_layers, n_skip_layer_pairs, bi_di=True):
+    def stitch(self, model_gen, adapters, n_layers, n_skip_layer_pairs, masks, auto_cast, bi_di=True):
         a_skip_layers, b_skip_layers = n_skip_layer_pairs[0]
         out, query, q, kv_x = None, None, None, None
-        adapter = adapters[0] if len(adapters) > 0 else None
+        if len(adapters) > 0:
+            adapter = adapters[0]
+            mask_a, mask_b = masks[0]
+        else:
+            adapter = None
+            mask_a, mask_b = None, None
+
         for i in range(n_layers):
             out, query, q = next(model_gen[0])
             if a_skip_layers > 0 and i % a_skip_layers == 0:
@@ -398,17 +394,45 @@ class Yinyang(nn.Module):
                                                  adapters[1:],
                                                  n_layers=b_skip_layers,
                                                  n_skip_layer_pairs=n_skip_layer_pairs[1:],
+                                                 masks=masks[1:],
+                                                 auto_cast=auto_cast[1:],
                                                  bi_di=bi_di)
+
                 if bi_di:
-                    kv_out[0] = kv_out[0] + next(adapter[1])(q=kv_q, kv_x=query)
+                    if auto_cast[1] is not None:
+                        with auto_cast[1]:
+                            kv_out[0] = kv_out[0] + next(adapter[1])(q=kv_q,
+                                                                     kv_x=query,
+                                                                     mask=mask_b)
+                    else:
+                        kv_out[0] = kv_out[0] + next(adapter[1])(q=kv_q,
+                                                                 kv_x=query,
+                                                                 mask=mask_b)
                     kv_out[1] = i
             if adapter is not None:
-                out[0] = out[0] + next(adapter[0])(q=q, kv_x=kv_x)
+                if auto_cast[0] is not None:
+                    with auto_cast[0]:
+                        out[0] = out[0] + next(adapter[0])(q=q,
+                                                           kv_x=kv_x,
+                                                           mask=mask_a)
+                else:
+                    out[0] = out[0] + next(adapter[0])(q=q,
+                                                       kv_x=kv_x,
+                                                       mask=mask_a)
                 out[1] = i
         return out, query, q
 
     def forward(self, seqs):
-        model_gen = [model(**seqs[i]) for i, model in enumerate(self.models)]
+        model_gen = []
+        unpack_params = []
+        for i, model in enumerate(self.models):
+            param_names = self.param_list[i]
+            params = {}
+            for n in param_names:
+                params[n] = seqs[n]
+            model_gen.append(model(**params))
+            unpack_params.append(params)
+
         adapters = []
         for i in range(len(self.adapters)):
             adapter_fn = []
@@ -416,14 +440,26 @@ class Yinyang(nn.Module):
                 adapter_fn.append(ad())
             adapters.append(adapter_fn)
 
+        masks = []
+        seq_len = self.seq_len
+        for i in range(len(seqs) - 1):
+            mask_a, mask_b = create_mask(seq_len[i],
+                                         seq_len[i + 1],
+                                         device=self.cur_device)
+            masks.append([mask_a, mask_b])
+
+        auto_cast = [self.models[i].autocast for i in range(len(self.models))]
+
         self.stitch(model_gen=model_gen,
                     adapters=adapters,
                     n_layers=self.n_layers,
                     n_skip_layer_pairs=self.n_skip_layer_pairs,
+                    masks=masks,
+                    auto_cast=auto_cast,
                     bi_di=self.bi_di)
         loss = {}
         for i, model in enumerate(model_gen):
             out = next(model)
-            seqs[i]["pred"] = out
-            loss[self.names[i]] = self.models[i].loss_func(**seqs[i])
+            unpack_params[i]["pred"] = out
+            loss[self.names[i]] = self.models[i].loss_func(**unpack_params[i])
         return loss

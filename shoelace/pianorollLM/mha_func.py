@@ -674,13 +674,13 @@ def multi_head_attention_forward(
         attn_output = scaled_dot_product_attention(
             q, k, v, attn_mask, dropout_p, is_causal
         )
-        attn_output = (
-            attn_output.permute(2, 0, 1, 3).contiguous().view(bsz * tgt_len, embed_dim)
-        )
+
         debug = None
-        wrap_attn_output = [attn_output.view(bsz, tgt_len, embed_dim), debug]
-        yield wrap_attn_output, query, q
-        attn_output = wrap_attn_output[0].view(bsz * tgt_len, embed_dim)
+        wrap_attn_output = [attn_output.transpose(1, 2).contiguous().view(bsz, tgt_len, embed_dim), debug]
+        yield wrap_attn_output, query.transpose(0, 1), q
+        attn_output = wrap_attn_output[0].view(bsz, tgt_len, num_heads, head_dim)
+        attn_output = attn_output.transpose(0, 1).contiguous()
+        attn_output = attn_output.view(bsz * tgt_len, embed_dim)
         attn_output = out_proj_weight(attn_output)
         attn_output = attn_output.view(tgt_len, bsz, attn_output.size(1))
         if not is_batched:

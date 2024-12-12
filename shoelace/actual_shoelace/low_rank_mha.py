@@ -102,7 +102,7 @@ class LowRankMultiheadAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
         return attn_output
 
-    def forward(self, q, kv_x, q_start_idx=0, kv_start_idx=0, attn_mask=None):
+    def forward(self, q, kv_x, q_start_idx=0, kv_start_idx=0, mask=None):
         q_len = q.shape[2]
         nq_heads = q.shape[1]
         q = q.transpose(1, 2).view(len(q), q_len, -1)
@@ -117,5 +117,5 @@ class LowRankMultiheadAttention(nn.Module):
         condition_output = self.compute_attention(q=q,
                                                   key=self.k_linear(kv_x),
                                                   value=self.v_linear(kv_x),
-                                                  attn_mask=attn_mask)
+                                                  attn_mask=mask)
         return condition_output * self.gates
