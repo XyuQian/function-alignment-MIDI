@@ -1,2 +1,4 @@
 __pycache__/
 model_weights/
+save_models/
+*.pth
