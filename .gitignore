@@ -1,2 +1,6 @@
 __pycache__/
 model_weights/
+logs*
+POP909*
+test*
+like/
