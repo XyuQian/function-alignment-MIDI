@@ -465,7 +465,6 @@ class StreamingMultiheadAttention(StreamingModule):
             x = rearrange(x, f"{layout} -> b t (h d)", h=self.num_heads)
             debug = None
             wrap_attn_output = [x, debug]
-            yield wrap_attn_output, query, q
             x = wrap_attn_output[0]
             x = self.out_proj(x)
         else:
@@ -588,7 +587,7 @@ class StreamingTransformerLayer(nn.TransformerEncoderLayer):
             key_padding_mask: Optional[Tensor],
             is_causal: bool = False,
     ) -> Tensor:
-        x = yield from self.self_attn(
+        x = self.self_attn(
             x,
             x,
             x,
@@ -608,7 +607,7 @@ class StreamingTransformerLayer(nn.TransformerEncoderLayer):
         #     assert cross_attention_src is not None
         x = src
         if self.norm_first:
-            dx = yield from self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
+            dx = self._sa_block(self.norm1(x), src_mask, src_key_padding_mask)
             x = x + self.layer_scale_1(dx)
             if cross_attention_src is not None:
                 x = x + self.layer_scale_cross(
@@ -616,7 +615,7 @@ class StreamingTransformerLayer(nn.TransformerEncoderLayer):
                         self.norm_cross(x), cross_attention_src))
             x = x + self.layer_scale_2(self._ff_block(self.norm2(x)))
         else:
-            dx = yield from self._sa_block(x, src_mask, src_key_padding_mask)
+            dx = self._sa_block(x, src_mask, src_key_padding_mask)
             x = self.norm1(x + self.layer_scale_1(
                 dx))
             if cross_attention_src is not None:
@@ -765,7 +764,7 @@ class StreamingTransformer(StreamingModule):
             x = x + self.positional_scale * pos_emb
 
         for layer in self.layers:
-            x = yield from self._apply_layer(layer, x, *args, **kwargs)
+            x = self._apply_layer(layer, x, *args, **kwargs)
 
         if self._is_streaming:
             self._streaming_state['offsets'] = offsets + T

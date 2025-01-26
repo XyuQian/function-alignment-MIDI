@@ -15,9 +15,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
 
-from shoelace.pfMIDILM.midi_dataset import MIDIDataset as Dataset
-from shoelace.pfMIDILM.midi_dataset import collate_fn, worker_init_fn
-from shoelace.pfMIDILM.MIDILM_gen import MIDILM as Model
+from shoelace.pfMIDILM.pop909_midi_dataset import MIDIDataset as Dataset
+from shoelace.pfMIDILM.pop909_midi_dataset import collate_fn, worker_init_fn
+from shoelace.actual_shoelace.models import MIDILMGEN
 
 device = "cuda"
 
@@ -30,7 +30,8 @@ def _get_free_port():
 
 def get_dataset(rid, batch_size):
     num_workers = 0
-    dataset = Dataset(path_folder="data/formatted",
+    dataset = Dataset(is_mono=False,
+                      path_folder="data/formatted",
                       rid=rid,
                       num_workers=num_workers)
 
@@ -59,11 +60,10 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
         from shoelace.pfMIDILM.config_2048_8_8_1024_8_4 import midi_lm_param, baby_param
     if str.startswith(args.exp_name, "midi_lm_1024_8_12_512_8_3"):
         from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
-    model = Model(param=midi_lm_param,
-                  baby_param=baby_param)
+    model = MIDILMGEN(device)
     # model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
     model = model.to(device)
-    model.set_config(device)
+    # model.set_config(device)
     model = DDP(model, [replica_id])
 
     dataset, dataloader = get_dataset(rid=replica_id,
@@ -95,8 +95,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
         r = rng.randint(0, 198)
         dataset.reset_random_seed(r, e)
         for i, batch in enumerate(dl):
-
-            loss = model(**batch)
+            loss = model(**batch)["loss"]
             grad, lr = trainer.step(loss, model.parameters())
 
             step += 1
@@ -108,16 +107,17 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
 
             mean_loss = (mean_loss * (n_element - 1) + loss.item()) / n_element
 
-            if rank == 0 and i > 0 and i % 3000 == 0:
-                with torch.no_grad():
-                    writer.add_scalar('train/mean_loss', mean_loss, step)
-                    model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
+            # if rank == 0 and i > 0 and i % 3000 == 0:
+            #     with torch.no_grad():
+            #         writer.add_scalar('train/mean_loss', mean_loss, step)
+            #         model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
 
-        mean_loss = mean_loss / n_element
-        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
-        if mean_loss < min_loss:
-            min_loss = mean_loss
-            model.module.save_weights(os.path.join(model_dir, f"best.pth"))
+        if rank == 0:
+            with torch.no_grad():
+                mean_loss = mean_loss / n_element
+                writer.add_scalar('train/mean_loss', mean_loss, e)
+                model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
+
 
 
 def main(args):

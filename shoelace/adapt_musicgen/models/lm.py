@@ -265,6 +265,20 @@ class LMModel(StreamingModule):
 
         return logits  # [B, K, S, card]
 
+    def yield_inference(self, sequence):
+        B, K, S = sequence.shape
+        assert K == self.num_codebooks, 'Sequence shape must match the specified number of codebooks'
+        input_ = sum([self.emb[k](sequence[:, k]) for k in range(K)])
+        out = yield from self.transformer(input_, cross_attention_src=None)
+        if self.out_norm:
+            out = self.out_norm(out)
+        logits = torch.stack([self.linears[k](out) for k in range(K)], dim=1)  # [B, K, S, card]
+
+        # remove the prefix from the model outputs
+        if len(self.fuser.fuse2cond['prepend']) > 0:
+            logits = logits[:, :, -S:]
+
+        yield logits  # [B, K, S, card]
     def compute_predictions(
             self, codes: torch.Tensor,
             conditions: tp.List[ConditioningAttributes],
@@ -289,6 +303,7 @@ class LMModel(StreamingModule):
                     Given the specified interleaving strategies, parts of the logits and codes should
                     not be considered as valid predictions because of invalid context.
         """
+
         B, K, T = codes.shape
         codes = codes.contiguous()
         # map codes [B, K, T] into pattern sequence [B, K, S] using special_token_id for masked tokens

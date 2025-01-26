@@ -1,8 +1,9 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
+from .transformer_encoder_gen import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
 from .preprocess_MIDI import SEG_RES
 
@@ -154,6 +155,34 @@ class MIDILM(nn.Module):
                                     memory=memory)
 
             yield outputs
+
+    def lora_forward(self, x):
+
+        input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS)
+        baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS)
+        target = x
+
+        # print(input_x.shape, baby_input_x.shape)
+        embed_x = self.input_embedding(input_x)
+        embed_x_with_pos = self.pos_encoding(embed_x)
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(x.shape[1]).to(x.device)
+        src_padding_mask = torch.where(x[:, :, 0] == PAD, float('-inf'), 0) if x is not None else None
+
+        decoder_output = self.transformer_decoder(embed_x_with_pos,
+                                                  src_key_padding_mask=src_padding_mask,
+                                                  is_causal=True,
+                                                  mask=attn_mask)
+
+        memory = decoder_output.flatten(0, 1)[:, None]
+
+        baby_input_x = baby_input_x.flatten(0, 1)
+        outputs = self.baby_llm(tgt=baby_input_x,
+                                memory=memory)
+
+        loss_fn = nn.CrossEntropyLoss(ignore_index=PAD)
+        acc_loss = loss_fn(outputs.flatten(0, 1), target.flatten())
+        return acc_loss
+
 
     def forward(self, x):
         input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS)

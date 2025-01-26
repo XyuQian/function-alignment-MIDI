@@ -5,113 +5,120 @@ import torch
 device = "cuda"
 
 names = [
-    "909",
-    "803",
-    "860",
-    "757",
-    "765",
-    "873",
-    "119",
-    "164",
-    "686"
-    #
-    # "737",
-    # "778",
-    # "772",
-    # "434",
-    # "856"
+    ["909", 30],
+    ["803", 91],
+    ["860", 36],
+    ["757", 96],
+    ["765", 75],
+    ["873", 30],
+    ["164", 18],
+    ["686", 58],
 ]
 fid = "6"
 
 
-def test_shoelace(mode, m_id):
-    from shoelace.actual_shoelace.shoelace_2 import Yingyang
-    # from shoelace.utils.encodec_utils import save_rvq
+def test_shoelace(mode):
+    from shoelace.actual_shoelace.inference_helper import InferenceHelper
     import numpy as np
     import h5py
-    is_mono = True
-    model = Yingyang(is_mono=is_mono)
 
-    model.load_weights(f"exp/mono_shoelace/latest_{m_id}.pth")
-    model = model.to(device)
-    model.set_config(device)
+
+    inference_helper = InferenceHelper(models=[
+        ["vocals2mel", "4_end"]
+    ], device=device)
 
     midi_seq = []
     audio_seq = []
-    mono_str = ".mel" if is_mono else ""
     with h5py.File(f"data/formatted/groups/pop909_tokens/{fid}.h5", "r") as hf:
-        for n in names:
+        for n, nid in names:
             print(f"data/POP909/{n}/{n}.mid")
-            mel = hf[f"data/POP909/{n}/{n}.mid.mel"][:][50 * 5: 50 * 6]
-            acc = hf[f"data/POP909/{n}/{n}.mid.acc"][:][50 * 5: 50 * 6]
+            st = int(nid * 50 / 16)
+            mel = hf[f"data/POP909/{n}/{n}.mid.mel"][:][st: st + 50]
+            # acc = hf[f"data/POP909/{n}/{n}.mid.acc"][:][st: st + 50]
             mel = np.reshape(mel, [-1, 3, 4])
-            acc = np.reshape(acc, [-1, 3, 4])
-            if is_mono:
-                acc = np.zeros_like(acc) + 512
-            midi = np.stack([mel, acc], 2)
-            midi = np.reshape(midi, [-1, 24])
+            # acc = np.reshape(acc, [-1, 3, 4])
+            # midi = np.stack([mel, acc], 2)
+            # midi = np.reshape(midi, [-1, 24])
+            midi = np.reshape(mel, [-1, 24])
             midi_seq.append(midi)
-            audio_seq.append(hf[f"data/POP909/{n}/{n}.mid.audio" + mono_str][:][5 * 16 * 50:6 * 16 * 50])
+            audio_seq.append(hf[f"data/POP909/{n}/{n}.mid.audio"][:][int(nid * 50):int(nid * 50) + 16 * 50])
 
     audio_seq = torch.from_numpy(np.stack(audio_seq, 0)).to(device)
     ref_seq = audio_seq.transpose(1, 2)
     midi_seq = torch.from_numpy(np.stack(midi_seq, 0)).to(device).long()
     desc = ["a melodic pop song"] * len(names)
-    model.eval()
 
     results = []
+    modes = {
+        "a2s": "vocals2mel",
+        "s2a": "mel2vocals",
+        "walk": "walk"
+    }
+    m = modes[mode]
     print(midi_seq.shape)
-    for i in range(5):
+    for i in range(3):
         print("sample#", i + 1)
-        if i == 0:
-            midi_top_k = 1
-            audio_top_k = 50
-        else:
-            midi_top_k = 2
-            audio_top_k = 100
-        results.append(model.inference(midi_seq=midi_seq,
-                                       audio_seq=audio_seq,
-                                       desc=desc,
-                                       mode=mode,
-                                       midi_top_k=midi_top_k,
-                                       audio_top_k=audio_top_k))
+        results.append(inference_helper.inference(midi_seq=midi_seq,
+                                                  audio_seq=audio_seq,
+                                                  mode=m))
 
-    print(audio_seq.shape)
-    audio_seq = torch.stack(results, 1).flatten(0, 1)
+    if results[0]["audio_pred"] is not None:
+        audio_pred = torch.stack([r["audio_pred"] for r in results], 1).flatten(0, 1)
+    else:
+        audio_pred = None
+
+    if results[0]["midi_pred"] is not None:
+        midi_pred = torch.stack([r["midi_pred"] for r in results], 1).flatten(0, 1)
+    else:
+        midi_pred = None
+
     folder = f"yy_test_results/{m_id}"
     os.makedirs(folder, exist_ok=True)
-    np.save(os.path.join(folder, f"test_{mode}.npy"), audio_seq.cpu().numpy())
-    if mode == "a2b":
-        np.save(os.path.join(folder, f"ref_{mode}.npy"), ref_seq[:, :, :audio_seq.shape[-1]].cpu().numpy())
-    else:
-        np.save(os.path.join(folder, f"ref_{mode}.npy"), midi_seq.cpu().numpy())
+
+    if audio_pred is not None:
+        np.save(os.path.join(folder, f"test_{mode}_audio.npy"), audio_pred.cpu().numpy())
+        np.save(os.path.join(folder, f"ref_audio.npy"), ref_seq[:, :, :audio_pred.shape[-1]].cpu().numpy())
+
+    if midi_pred is not None:
+        np.save(os.path.join(folder, f"test_{mode}_midi.npy"), midi_pred.cpu().numpy())
+        np.save(os.path.join(folder, f"ref_midi.npy"), midi_seq.cpu().numpy())
 
 
-def pred_2_audio(m_id):
+
+
+
+
+def pred_2_audio(m_id, mode):
     import numpy as np
     from shoelace.utils.encodec_utils import save_rvq
     folder = f"yy_test_results/{m_id}"
-    pred_data = np.load(os.path.join(folder, "test_a2b.npy"))
-    ref_data = np.load(os.path.join(folder, "ref_a2b.npy"))
+    pred_data = np.load(os.path.join(folder, f"test_{mode}_audio.npy"))
+    ref_data = np.load(os.path.join(folder, "ref_audio.npy"))
+    print(pred_data.shape, ref_data.shape)
     n = len(ref_data)
     m = len(pred_data) // n
-    print(pred_data.shape, ref_data.shape)
+    ref_data = ref_data[:n]
     audio_codes = np.concatenate([pred_data,
                                   ref_data], 0)
+
+    audio_codes = audio_codes[:, :, :-5]
 
     audio_codes = torch.from_numpy(audio_codes).to(device).long()
     filename_list = [
 
     ]
-    audio_folder = os.path.join(folder, "audio")
+    audio_folder = os.path.join(folder, f"audio_{mode}")
     os.makedirs(audio_folder, exist_ok=True)
+    ref_audio_folder = os.path.join(folder, "audio_ref")
+    os.makedirs(ref_audio_folder, exist_ok=True)
+
     for i in range(n * m):
         n_i = i // m
         m_i = i % m
         filename_list.append(os.path.join(audio_folder, f"pred_{n_i}_{m_i}"))
 
     for i in range(n):
-        filename_list.append(os.path.join(audio_folder, f"ref_{i}"))
+        filename_list.append(os.path.join(ref_audio_folder, f"ref_{i}"))
     print(audio_codes.shape)
     print(torch.max(audio_codes), torch.min(audio_codes))
 
@@ -125,13 +132,15 @@ def pred_2_audio(m_id):
                  tokens=audio_codes[i: ed].long())
 
 
-def pred_2_midi(m_id):
+def pred_2_midi(m_id, mode):
     from shoelace.pianoroll_vq.base_vq import MIDIRVQ, predict
     from shoelace.utils.utils import data2midi
     import numpy as np
     folder = f"yy_test_results/{m_id}"
-    midi_folder = os.path.join(folder, "midis")
+    midi_folder = os.path.join(folder, f"midis_{mode}")
     os.makedirs(midi_folder, exist_ok=True)
+    ref_folder = os.path.join(folder, "midis_ref")
+    os.makedirs(ref_folder, exist_ok=True)
 
     model = MIDIRVQ(modes=["chords", "cond_onset", "cond_pitch"], main_mode="cond_pitch").to(device)
     model.set_config(path_dict={"chords": "save_models/chords.pth",
@@ -140,7 +149,7 @@ def pred_2_midi(m_id):
                                 }, device=device)
 
     res = []
-    for f in ["test_b2a.npy", "ref_b2a.npy"]:
+    for f in [f"test_{mode}_midi.npy", "ref_midi.npy"]:
         pred_data = np.load(os.path.join(folder, f))
         pred_data = torch.from_numpy(pred_data).to(device)
         total_tokens = pred_data.view(len(pred_data), -1, 3, 2, 4)
@@ -162,8 +171,10 @@ def pred_2_midi(m_id):
                 n = len(tokens) // len(names)
                 for k in range(len(names)):
                     for m in range(n):
-                        path = os.path.join(midi_folder, f"{k}_{names[k]}_{m}_{tags[j]}_{cls[i]}.mid") if n > 1 else \
-                            os.path.join(midi_folder, f"{k}_{names[k]}_{tags[j]}_{cls[i]}.mid")
+                        if cls[i] == "ref":
+                            path = os.path.join(ref_folder, f"{k}_{names[k][0]}_{tags[j]}_{cls[i]}.mid")
+                        else:
+                            path = os.path.join(midi_folder, f"{k}_{names[k][0]}_{m}_{tags[j]}_{cls[i]}.mid")
                         data2midi(pred[1][n * k + m].cpu().numpy() > .5,
                                   (pred[2][n * k + m].cpu().numpy() > .5) * 100,
                                   path)
@@ -173,14 +184,16 @@ if __name__ == "__main__":
     import sys
 
     mode = sys.argv[1]
-    m_id = sys.argv[2]
-    if mode == "a2b":
-        test_shoelace("a2b", m_id)
-    elif mode == "b2a":
-        test_shoelace("b2a", m_id)
-    elif mode == "a2b_decode":
+    if mode in ["a2s", "s2a", "walk"]:
+        test_shoelace(mode)
+    elif mode == "s2a_decode":
         print("pred_2_audio")
-        pred_2_audio(m_id)
-    elif mode == "b2a_decode":
+        pred_2_audio(sys.argv[2], mode="s2a")
+    elif mode == "a2s_decode":
         print("pred_2_midi")
-        pred_2_midi(m_id)
+        pred_2_midi(sys.argv[2], mode="a2s")
+    elif mode == "walk_decode":
+        print("pred_2_audio")
+        pred_2_audio(sys.argv[2], mode="walk")
+        print("pred_2_midi")
+        pred_2_midi(sys.argv[2], mode="walk")

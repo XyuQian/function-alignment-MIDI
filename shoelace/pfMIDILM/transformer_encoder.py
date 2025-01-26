@@ -1,6 +1,6 @@
 import torch
 from torch import Tensor
-from typing import Any, Callable, Optional, Union
+from typing import Callable, Optional, Union
 import warnings
 from torch.nn import Module, Linear, Dropout, LayerNorm
 import torch.nn.functional as F
@@ -70,11 +70,10 @@ class TransformerEncoderLayer(Module):
 
         proj_weight = self_attn.in_proj_weight
         proj_bias = self_attn.in_proj_bias
-        self_attn.in_proj_weight = None
-        self_attn.in_proj_weight = None
+        # self_attn.in_proj_weight = None
+        # self_attn.in_proj_weight = None
 
-        self_attn.o_proj = self_attn.out_proj
-        self_attn.out_proj = None
+        # self_attn.out_proj = None
 
         out_dim = proj_weight.shape[0] // 3
         in_dim = proj_weight.shape[1]
@@ -100,6 +99,9 @@ class TransformerEncoderLayer(Module):
         self_attn.q_proj = q_proj_lora
         self_attn.k_proj = k_proj_lora
         self_attn.v_proj = v_proj_lora
+
+        self_attn.in_proj_weight.requires_grad = False
+        self_attn.in_proj_bias.requires_grad = False
 
     def forward(
             self,
@@ -239,7 +241,7 @@ class TransformerEncoderLayer(Module):
                 hidden_state, src_mask, src_key_padding_mask, is_causal=is_causal,
             )
             x = x + self._ff_block(self.norm2(x))
-        else:
+        else:  #
             hidden_state = x
             dx = yield from self._sa_block(hidden_state, src_mask, src_key_padding_mask,
                                            is_causal=is_causal)
@@ -257,7 +259,7 @@ class TransformerEncoderLayer(Module):
             attn_mask: Optional[Tensor],
             key_padding_mask: Optional[Tensor],
             is_causal: bool = False,
-    ) -> Tensor:
+    ) -> Tensor:  #
         x = yield from self.self_attn(
             x,
             x,
@@ -444,6 +446,7 @@ class TransformerEncoder(Module):
         seq_len = _get_seq_len(src, batch_first)
         is_causal = _detect_is_causal_mask(mask, is_causal, seq_len)
         for layer_idx in range(len(self.layers)):
+            #
             output, hidden_state = yield from self.layers[layer_idx](
                 output,
                 src_mask=mask,

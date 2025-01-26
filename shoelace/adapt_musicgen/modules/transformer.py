@@ -465,7 +465,7 @@ class StreamingMultiheadAttention(StreamingModule):
             x = rearrange(x, f"{layout} -> b t (h d)", h=self.num_heads)
             debug = None
             wrap_attn_output = [x, debug]
-            yield wrap_attn_output, query, q
+            yield wrap_attn_output, query, q, None
             x = wrap_attn_output[0]
             x = self.out_proj(x)
         else:

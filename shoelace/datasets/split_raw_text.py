@@ -6,7 +6,8 @@ import pretty_midi
 
 
 
-def la_dataset(root_dir, output_folder, n_partition=12):
+
+def la_dataset(root_dir, output_folder, n_partition=100):
     midi_folder = os.path.join(root_dir, "MIDIs")
     outs = []
     for folder in os.listdir(midi_folder):
@@ -29,6 +30,6 @@ def la_dataset(root_dir, output_folder, n_partition=12):
 
 
 if __name__ == "__main__":
-    output_folder = "data/formatted/piano_piece/raw_text"
+    output_folder = "data/formatted/las/text"
     os.makedirs(output_folder, exist_ok=True)
     la_dataset("data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA", output_folder)

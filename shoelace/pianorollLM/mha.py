@@ -407,8 +407,8 @@ class MultiheadAttention(Module):
             else:
                 query, key, value = (x.transpose(1, 0) for x in (query, key, value))
 
-        if not self._qkv_same_embed_dim:
-            attn_output, attn_output_weights = yield from multi_head_attention_forward(
+        if not self._qkv_same_embed_dim:#yield from
+            attn_output, attn_output_weights = multi_head_attention_forward(
                 query,
                 key,
                 value,

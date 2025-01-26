@@ -254,7 +254,7 @@ class LMModel(StreamingModule):
         # input_, cross_attention_input = self.fuser(input_, condition_tensors)
         #
         # out = self.transformer(input_, cross_attention_src=cross_attention_input)
-        out = yield from self.transformer(input_, cross_attention_src=None)
+        out = self.transformer(input_, cross_attention_src=None)
         if self.out_norm:
             out = self.out_norm(out)
         logits = torch.stack([self.linears[k](out) for k in range(K)], dim=1)  # [B, K, S, card]
@@ -279,6 +279,7 @@ class LMModel(StreamingModule):
             logits = logits[:, :, -S:]
 
         yield logits  # [B, K, S, card]
+
     def compute_predictions(
             self, codes: torch.Tensor,
             conditions: tp.List[ConditioningAttributes],
@@ -303,8 +304,6 @@ class LMModel(StreamingModule):
                     Given the specified interleaving strategies, parts of the logits and codes should
                     not be considered as valid predictions because of invalid context.
         """
-        print("aaaaaaaaaaaaaaaaaaaaaaaaaah")
-        assert False
         B, K, T = codes.shape
         codes = codes.contiguous()
         # map codes [B, K, T] into pattern sequence [B, K, S] using special_token_id for masked tokens
@@ -314,7 +313,7 @@ class LMModel(StreamingModule):
         )
         # apply model on pattern sequence
         model = self if self._fsdp is None else self._fsdp
-        logits = yield from model(sequence_codes, conditions, condition_tensors)  # [B, K, S, card]
+        logits = model(sequence_codes, conditions, condition_tensors)  # [B, K, S, card]
         # map back the logits on pattern sequence to logits on original codes: [B, K, S, card] -> [B, K, T, card]
         # and provide the corresponding mask over invalid positions of tokens
         logits = logits.permute(0, 3, 1, 2)  # [B, card, K, S]

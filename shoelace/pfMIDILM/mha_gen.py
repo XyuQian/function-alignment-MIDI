@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_normal_, xavier_uniform_
 from torch.nn.parameter import Parameter
 from torch.nn.modules.linear import NonDynamicallyQuantizableLinear
-from .mha_func import multi_head_attention_forward
+from .mha_func_gen import multi_head_attention_forward
 
 from typing import Any, Callable, Optional, Tuple
 
@@ -409,7 +409,7 @@ class MultiheadAttention(Module):
 
         if not self._qkv_same_embed_dim:
             #
-            attn_output, attn_output_weights = yield from multi_head_attention_forward(
+            attn_output, attn_output_weights = multi_head_attention_forward(
                 query,
                 key,
                 value,
@@ -421,7 +421,7 @@ class MultiheadAttention(Module):
                 self.bias_v,
                 self.add_zero_attn,
                 self.dropout,
-                self.o_proj,
+                self.out_proj,
                 None,
                 training=self.training,
                 key_padding_mask=key_padding_mask,

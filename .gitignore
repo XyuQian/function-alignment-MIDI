@@ -1,6 +1,11 @@
 __pycache__/
 model_weights/
+<<<<<<< HEAD
 logs*
 POP909*
 test*
 like/
+=======
+save_models/
+*.pth
+>>>>>>> 213e7b4322cbff6fed85f39b32aa447a514311ef

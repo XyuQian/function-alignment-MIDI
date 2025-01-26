@@ -46,7 +46,8 @@ def save_rvq(output_list, tokens):
         gen_audio = compression_model.decode(tokens, None)
         for i in range(gen_audio.size(0)):
             pred_wav = gen_audio[i].cpu()
-            # torchaudio.save(output_list[i], pred_wav.cpu(), sample_rate)
+            if pred_wav.dtype == torch.float16:
+                pred_wav = pred_wav.to(torch.float32)
             audio_write(output_list[i], pred_wav.cpu(), sample_rate, strategy="loudness", loudness_compressor=True)
             wavs.append(pred_wav)
     return torch.stack(wavs, 0)

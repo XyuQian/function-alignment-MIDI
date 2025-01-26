@@ -29,7 +29,7 @@ def process_data(file_lst_path, output_path):
     with open(file_lst_path, "r", encoding="utf-8") as f:
         lines = f.readlines()
 
-    # lines = [decode_unicode_string(line) for line in lines]
+    lines = [decode_unicode_string(line) for line in lines]
     with open("data/formatted/groups/pop909_chords_dict.json", 'r') as file:
         chords_dict = json.load(file)
 
@@ -38,10 +38,18 @@ def process_data(file_lst_path, output_path):
     midi_rvq = get_model()
     scale = 16
 
-    with h5py.File(output_path, "w") as hf:
+    with h5py.File(output_path, "a") as hf:
         for midi_path, audio_path in lines:
-            melody_data, _ = midi_to_matrix(midi_path, res=50, mode="melody")
-            acc_data, melody = midi_to_matrix(midi_path, res=50, mode="acc")
+            if midi_path in ["data/POP909/196/196.mid"]:
+                continue
+            if midi_path + ".audio.mel" in hf:
+                print("skip", midi_path)
+                continue
+            else:
+                print(midi_path)
+
+            melody_data, _ = midi_to_matrix(path=midi_path, midi_data=None, mel_tag="MELODY", res=50, mode="melody")
+            acc_data, melody = midi_to_matrix(path=midi_path, midi_data=None, mel_tag="MELODY",  res=50, mode="acc")
             chord_path = os.path.join("/".join(str.split(midi_path, "/")[:-1]), "chord_midi.txt")
             chords, chords_dict = load_chords(chord_path, chords_dict, res=50, revise_ch=False)
             chords = chords[:len(melody)]
@@ -57,7 +65,6 @@ def process_data(file_lst_path, output_path):
             ind = np.argmax(melody[:, :, 0], axis=1) + np.arange(len(melody)) * 16
             melody = melody.reshape(-1, 2)
             melody = melody[ind]
-            print(melody.shape)
 
             hf.create_dataset(midi_path + ".acc", data=acc_midi_tokens.astype(np.int16))
             hf.create_dataset(midi_path + ".mel", data=melody_midi_tokens.astype(np.int16))

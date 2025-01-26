@@ -5,7 +5,7 @@ import warmup_scheduler
 
 class Trainer:
     def __init__(self, params, lr, num_epochs, num_steps, device="cuda", warmup_epoch=0.01):
-        min_lr = 5e-6
+        min_lr = 8e-6
         self.optimizer = torch.optim.AdamW(params, lr=lr, weight_decay=0.002)
         # base_scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(self.optimizer,
         #                                                             # T_max=(num_epochs - warmup_epoch) * num_steps,

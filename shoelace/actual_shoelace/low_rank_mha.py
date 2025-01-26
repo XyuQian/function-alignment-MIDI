@@ -15,7 +15,7 @@ def init_weights_B(layer):
 
 
 class PositionalEncoding(nn.Module):
-    def __init__(self, d_model, max_len=1000, multi_factor=16, long_first=True):
+    def __init__(self, d_model, max_len=4096 + 1):
         super(PositionalEncoding, self).__init__()
         pe = torch.zeros(max_len, d_model)
         position = torch.arange(0, max_len, dtype=torch.float).unsqueeze(1)
@@ -23,19 +23,25 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         pe = pe.unsqueeze(0)
-        long_pe = F.interpolate(pe.transpose(1, 2), size=(int(max_len * multi_factor),)).transpose(1, 2)
-
-
-        self.pos = {"a_pe": long_pe if long_first else pe,
-                    "b_pe": pe if long_first else long_pe}
+        self.r_pos = {"relative": pe}
 
     def set_config(self, device):
-        for key in self.pos:
-            self.pos[key] = self.pos[key].to(device)
+        self.r_pos["relative"] = self.r_pos["relative"].to(device)
 
-    def forward(self, x_a, x_a_idx, x_b, x_b_idx):
-        return x_a + self.pos["a_pe"][:, x_a_idx:x_a_idx + x_a.shape[1], :], \
-               x_b + self.pos["b_pe"][:, x_b_idx:x_b_idx + x_b.shape[1], :]
+    def forward(self, x_len, index=None):
+        pe = self.r_pos["relative"]
+        if index is None:
+            return pe[:, :x_len, :]
+        else:
+            pe = pe.squeeze(0)
+            return pe[index[..., 0]]
+            # pos = []
+
+            # n_pos = index.shape[-1]
+            # for k in range(n_pos):
+            #     pos.append(pe[..., k::n_pos][index[..., k]])
+            #
+            # return x + torch.stack(pos, -1).flatten(2, 3)
 
 
 class LowRankMultiheadAttention(nn.Module):
@@ -56,18 +62,18 @@ class LowRankMultiheadAttention(nn.Module):
         self.v_linear = nn.Sequential(
             nn.Linear(in_dim, low_rank_dim, bias=False),
             nn.Linear(low_rank_dim, embed_dim, bias=False))
-        # self.k_linear = nn.Linear(in_dim, embed_dim, bias=False)
-        # self.v_linear = nn.Linear(in_dim, embed_dim, bias=False)
-        # self.pos_linear = nn.Linear(in_dim, embed_dim, bias=False)
+
         self.prompt = nn.Parameter(torch.randn(1, 1, in_dim), requires_grad=True)
 
-        self.pos_linear = nn.Sequential(
-            nn.Linear(in_dim, low_rank_dim, bias=False),
+        self.q_pos_linear = nn.Sequential(
+            nn.Linear(embed_dim, low_rank_dim, bias=False),
             nn.Linear(low_rank_dim, embed_dim, bias=False))
 
-        self.pos_encoding = PositionalEncoding(multi_factor=multi_factor,
-                                               long_first=long_first,
-                                               d_model=in_dim)
+        self.k_pos_linear = nn.Sequential(
+            nn.Linear(embed_dim, low_rank_dim, bias=False),
+            nn.Linear(low_rank_dim, embed_dim, bias=False))
+
+        self.pos_encoding = PositionalEncoding(d_model=embed_dim)
 
         self.gates = nn.Parameter(torch.zeros([1]), requires_grad=True)
         self.attn_dropout = nn.Dropout(dropout)
@@ -102,20 +108,25 @@ class LowRankMultiheadAttention(nn.Module):
         attn_output = attn_output.transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)
         return attn_output
 
-    def forward(self, q, kv_x, q_start_idx=0, kv_start_idx=0, mask=None):
+    def forward(self, q, kv_x, pos_a=None, pos_b=None, mask=None):
         q_len = q.shape[2]
+        kv_len = kv_x.shape[1]
         nq_heads = q.shape[1]
         q = q.transpose(1, 2).view(len(q), q_len, -1)
-        zero_query = torch.zeros([len(q), q_len, kv_x.shape[-1]]).to(q.device)
-        query_pos, kv_x = self.pos_encoding(x_a=zero_query,
-                                            x_a_idx=q_start_idx,
-                                            x_b=kv_x,
-                                            x_b_idx=kv_start_idx)
-        q = q + self.pos_linear(query_pos)
+        query_pos = self.pos_encoding(x_len=q_len,
+                                      index=pos_a)
+        q = q + self.q_pos_linear(query_pos)
         q = q.view(len(q), q_len, nq_heads, -1).transpose(1, 2)
-        kv_x = torch.concat([self.prompt.repeat(len(kv_x), 1, 1), kv_x], 1)
+
+        key_pos = self.pos_encoding(x_len=kv_len, index=pos_b)
+
+        key_pos = F.pad(key_pos, (0, 0, 1, 0), "constant", 0)
+
+        kv = torch.concat([self.prompt.repeat(len(kv_x), 1, 1), kv_x], 1)
+
         condition_output = self.compute_attention(q=q,
-                                                  key=self.k_linear(kv_x),
-                                                  value=self.v_linear(kv_x),
+                                                  key=self.k_linear(kv) + self.k_pos_linear(key_pos),
+                                                  # key=self.k_linear(kv),
+                                                  value=self.v_linear(kv),
                                                   attn_mask=mask)
         return condition_output * self.gates

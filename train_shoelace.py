@@ -28,11 +28,11 @@ def _get_free_port():
         return s.server_address[1]
 
 
-def get_dataset(rid, batch_size):
+def get_dataset(rid, is_mono, batch_size):
     num_workers = 0
-    dataset = Dataset(path_folder="data/formatted/groups",
+    dataset = Dataset(path_folder="data/formatted/",
                       rid=rid,
-                      seg_sec=SAMPLE_SEC,
+                      is_mono=is_mono,
                       num_workers=num_workers)
 
     dataloader = torch.utils.data.DataLoader(
@@ -61,7 +61,8 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
     model = DDP(model, [replica_id])
 
     dataset, dataloader = get_dataset(rid=replica_id,
-                                      batch_size=args.batch_size)
+                                      batch_size=args.batch_size,
+                                      is_mono=args.mono)
 
     train(replica_id, model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,
@@ -71,7 +72,6 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, epochs):
     # optimizer and lr scheduler
     num_steps = len(dataloader)
-    # rng = np.random.RandomState(123 + rank * 100)
     rng = np.random.RandomState(345 + rank * 100)
     if rank == 0:
         writer = SummaryWriter(model_dir, flush_secs=20)
@@ -80,46 +80,44 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
 
     model = model.to(device)
     step = 0
-    min_loss = 2333333
     for e in range(0, epochs):
         mean_loss = 0
         n_element = 0
         model.train()
 
         dl = tqdm(dataloader, desc=f"Epoch {e}") if rank == 0 else dataloader
-        # r = rng.randint(0, 442)
         r = rng.randint(0, 710)
         dataset.reset_random_seed(r, e)
         for i, batch in enumerate(dl):
             loss = 0
             loss_dict = model(batch)
             for n in loss_dict:
-                loss += loss_dict[n]
+                loss += loss_dict[n][0] * loss_dict[n][1]
             grad, lr = trainer.step(loss, model.parameters())
 
             step += 1
             n_element += 1
             if rank == 0:
                 for n in loss_dict:
-                    writer.add_scalar(n, loss_dict[n].item(), step)
+                    writer.add_scalar(n, loss_dict[n][0].item(), step)
                 writer.add_scalar("grad", grad, step)
                 writer.add_scalar("lr", lr, step)
 
             mean_loss += (loss.item() / n_element)
 
-            if rank == 0 and  i % 3100 == 0:
+            if rank == 0 and (e % 3 == 0 or e == epochs - 1) and i % 1600 == 0 and i > 0:
                 with torch.no_grad():
-                    writer.add_scalar('train/mean_loss', mean_loss, step)
-                    model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
+                    model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}"))
 
-            mean_loss = mean_loss / n_element
-        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
+        if rank == 0 and e % 3 == 0 or e == epochs - 1:
+            with torch.no_grad():
+                model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end"))
+                writer.add_scalar('train/mean_loss', mean_loss, e)
 
 
 def main(args):
     experiment_folder = args.experiment_folder
     experiment_name = args.exp_name
-
 
     if not os.path.exists(experiment_folder):
         os.mkdir(experiment_folder)
@@ -140,6 +138,10 @@ if __name__ == "__main__":
     parser.add_argument('-lr', '--learning_rate', type=float)
     parser.add_argument('-m', '--mode', type=str)
     parser.add_argument('-n', '--exp_name', type=str)
+    parser.add_argument(
+        '--mono',
+        action='store_true',
+    )
 
     args = parser.parse_args()
     main(args)

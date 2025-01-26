@@ -15,9 +15,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
 
-from shoelace.pianorollLM.token_dataset import TokenDataset as Dataset
-from shoelace.pianorollLM.token_dataset import collate_fn, worker_init_fn
-from shoelace.pianorollLM.pianoroll_lm_with_baby import PianoRollLM as Model
+from shoelace.pfMIDILM.midi_dataset import MIDIDataset as Dataset
+from shoelace.pfMIDILM.midi_dataset import collate_fn, worker_init_fn
+from shoelace.pfMIDILM.MIDILM_gen import MIDILM as Model
 
 device = "cuda"
 
@@ -30,9 +30,8 @@ def _get_free_port():
 
 def get_dataset(rid, batch_size):
     num_workers = 0
-    dataset = Dataset(path_folder="data/formatted/las_melody",
+    dataset = Dataset(path_folder="data/formatted",
                       rid=rid,
-                      seg_len=50 * 128 // 16,
                       num_workers=num_workers)
 
     dataloader = torch.utils.data.DataLoader(
@@ -55,8 +54,14 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
     torch.distributed.init_process_group('nccl', rank=replica_id, world_size=replica_count)
     device = torch.device('cuda', replica_id)
     torch.cuda.set_device(device)
-    model = Model()
-    model.load_state_dict(torch.load("save_models/llm.pth", map_location="cpu"), strict=False)
+
+    if args.exp_name == "midi_lm_2048_8_8_1024_8_4":
+        from shoelace.pfMIDILM.config_2048_8_8_1024_8_4 import midi_lm_param, baby_param
+    if str.startswith(args.exp_name, "midi_lm_1024_8_12_512_8_3"):
+        from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
+    model = Model(param=midi_lm_param,
+                  baby_param=baby_param)
+    # model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
     model = model.to(device)
     model.set_config(device)
     model = DDP(model, [replica_id])
@@ -72,7 +77,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, epochs):
     # optimizer and lr scheduler
     num_steps = len(dataloader)
-    rng = np.random.RandomState(541 + rank * 100)
+    rng = np.random.RandomState(312 + rank * 100)
     if rank == 0:
         writer = SummaryWriter(model_dir, flush_secs=20)
 
@@ -92,22 +97,18 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
         for i, batch in enumerate(dl):
 
             loss = model(**batch)
-            # loss = melody_loss + chords_loss + rvq_loss *.002
             grad, lr = trainer.step(loss, model.parameters())
 
             step += 1
             n_element += 1
             if rank == 0:
                 writer.add_scalar("loss", loss.item(), step)
-                # writer.add_scalar("melody_loss", melody_loss.item(), step)
-                # writer.add_scalar("chords_loss", chords_loss.item(), step)
-                # writer.add_scalar("rvq_loss", rvq_loss.item(), step)
                 writer.add_scalar("grad", grad, step)
                 writer.add_scalar("lr", lr, step)
 
-            mean_loss = (mean_loss + loss.item()) / n_element
+            mean_loss = (mean_loss * (n_element - 1) + loss.item()) / n_element
 
-            if rank == 0 and i > 0 and i % 1900 == 0:
+            if rank == 0 and i > 0 and i % 3000 == 0:
                 with torch.no_grad():
                     writer.add_scalar('train/mean_loss', mean_loss, step)
                     model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
@@ -121,7 +122,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
 
 def main(args):
     experiment_folder = args.experiment_folder
-    experiment_name = "pr_llm_with_baby"
+    experiment_name = args.exp_name
 
     if not os.path.exists(experiment_folder):
         os.mkdir(experiment_folder)
@@ -136,11 +137,11 @@ def main(args):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('-d', '--experiment_folder', type=str)
-    # parser.add_argument('-n', '--experiment_name', type=str)
     parser.add_argument('-e', '--epoch', type=int, default=50)
     parser.add_argument('-b', '--batch_size', type=int, default=64)
     parser.add_argument('-w', '--world_size', type=int, default=5)
     parser.add_argument('-lr', '--learning_rate', type=float)
+    parser.add_argument('-p', '--exp_name', type=str)
 
     args = parser.parse_args()
     main(args)

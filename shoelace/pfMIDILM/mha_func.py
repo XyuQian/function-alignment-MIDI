@@ -271,7 +271,7 @@ def multi_head_attention_forward(
         bias_v: Optional[Tensor],
         add_zero_attn: bool,
         dropout_p: float,
-        out_proj_weight: Tensor,
+        out_proj_weight,
         out_proj_bias: Optional[Tensor],
         training: bool = True,
         key_padding_mask: Optional[Tensor] = None,
@@ -677,7 +677,7 @@ def multi_head_attention_forward(
 
         debug = None
         wrap_attn_output = [attn_output.transpose(1, 2).contiguous().view(bsz, tgt_len, embed_dim), debug]
-        yield wrap_attn_output, query.transpose(0, 1), q
+        yield wrap_attn_output, query.transpose(0, 1), q, None
         attn_output = wrap_attn_output[0].view(bsz, tgt_len, num_heads, head_dim)
         attn_output = attn_output.transpose(0, 1).contiguous()
         attn_output = attn_output.view(bsz * tgt_len, embed_dim)

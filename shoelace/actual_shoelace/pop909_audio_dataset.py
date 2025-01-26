@@ -22,7 +22,7 @@ def load_data_lst(path_folder):
     files = []
     feature_path = []
     for f in os.listdir(list_folder):
-        if f == "6.lst":
+        if f in ["6.lst", "7.lst"]:
             print(list_folder, f)
             continue
         path_lst = os.path.join(list_folder, f)
@@ -37,9 +37,9 @@ def load_data_lst(path_folder):
     return files, feature_path
 
 
-class ShoelaceDataset(BaseDataset):
+class AudioDataset(BaseDataset):
     def __init__(self, path_folder, rid, is_mono=True, num_workers=1, use_loader=True):
-        super(ShoelaceDataset, self).__init__()
+        super(AudioDataset, self).__init__()
         self.rid = rid
         self.use_loader = use_loader
         files, feature_path = load_data_lst(path_folder)
@@ -54,34 +54,11 @@ class ShoelaceDataset(BaseDataset):
                                  desc=f"prepare dataset {i} / {len(feature_path)}"):
                     if f + ".audio" not in hf:
                         continue
-                    total_len = (hf[f + ".audio"].shape[0] - MAX_DUR) // SEG_RES
-                    sos_indices = hf[f + ".sos"][:]
-                    res_sos_indices = hf[f + ".res_sos"][:]
-                    if is_mono:
-                        valid_melody_seg = hf[f + ".valid_melody_seg"][:]
+                    total_len = (hf[f + ".audio"].shape[0] - MAX_DUR)
 
-                    for k in range(0, total_len):
-                        if k >= len(sos_indices) - 1:
-                            break
 
-                        k_ed = k + SEG_LEN if k + SEG_LEN < len(sos_indices) else len(sos_indices) - 1
-                        skip = False
-                        if is_mono:
-                            start_ed = k_ed
-                            while valid_melody_seg[k: k_ed].sum() < k_ed - k:
-                                k_ed -= 1
-                                if k >= k_ed or start_ed - k_ed > TOL_WIN:
-                                    skip = True
-                                    break
-                        if skip:
-                            continue
-                        res_st = res_sos_indices[k] if k < len(res_sos_indices) else -1
-                        res_ed = res_sos_indices[k + 1] if k + 1 < len(res_sos_indices) else -1
-                        e_st = sos_indices[k]
-                        e_ed = sos_indices[k_ed]
-                        if e_ed - e_st < 2:
-                            continue
-                        index[str(i % num_workers)].append([i, j, k * SEG_RES, e_st, e_ed, res_st, res_ed])
+                    for k in range(0, total_len, 50):
+                        index[str(i % num_workers)].append([i, j, k])
         self.f_len = sum([len(index[i]) for i in index])
         self.index = index
         self.files = files
@@ -99,59 +76,20 @@ class ShoelaceDataset(BaseDataset):
     def __getitem__(self, idx):
         # worker_id = get_worker_info().id if self.use_loader else 0
         index = self.index[str(0)]
-        tid, fid, a_id, e_st, e_ed, res_st, res_ed = index[int(idx % len(index))]
+        tid, fid, a_id = index[int(idx % len(index))]
 
         fname = self.files[tid][fid]
         if fname not in self.data:
             with h5py.File(self.feature_path[tid], "r") as hf:
-                events = hf[fname + ".events"][:]
-                res_events = hf[fname + ".res_events"][:]
-                # idx = events[:, 1] > 0
-                # events[idx, 1] = 0
-                # idx = res_events[:, 1] > 0
-                # res_events[idx, 1] = 0
 
                 self.data[fname] = {
                     "audio": hf[fname + ".audio"][:],
-                    "vocals": hf[fname + ".audio.vocals"][:],
-                    "acc": hf[fname + ".audio.acc"][:],
-                    "events": events,
-                    "res_events": res_events,
-                    "index": hf[fname + ".index"][:],
+
                 }
 
-        tag = "vocals" if self.is_mono else "audio"
-        audio_data = self.data[fname][tag][a_id: a_id + MAX_DUR]
-        midi_data = self.data[fname]["events"][e_st: e_ed]
-        index = self.data[fname]["index"][e_st: e_ed]
 
-        index = index - index[0]
-
-        if self.is_mono:
-            ind = midi_data[:, 1] > 0
-            if ind.sum() < 2:
-                return self.__getitem__((idx + 1) % len(self.index[str(0)]))
-
-        if res_ed > res_st:
-            prefix = self.data[fname]["res_events"][res_st: res_ed][:]
-            midi_data = np.concatenate([midi_data[:1], prefix, midi_data[1:]], 0)
-            prefix_pos = np.zeros([len(prefix), index.shape[-1]])
-            prefix_pos[:, 1] = prefix[:, 3] * SEG_RES + prefix[:, 4]
-            index = np.concatenate([index[:1], prefix_pos, index[1:]], 0)
-        midi_data[midi_data < 0] = PAD
-
-        if self.is_mono:
-            ind = midi_data[:, 1] > 0
-            midi_data = midi_data[ind]
-            index = index[ind]
-            if len(index) < 2:
-                return self.__getitem__((idx + 1) % len(self.index[str(0)]))
-
-        if len(midi_data) > MAX_SEQ_LEN:
-            midi_data = midi_data[:MAX_SEQ_LEN]
-            index = index[:MAX_SEQ_LEN]
-
-        return midi_data, audio_data, index
+        audio_data = self.data[fname]["audio"][a_id: a_id + MAX_DUR]
+        return audio_data
 
     def reset_random_seed(self, r, e):
         self.rng = np.random.RandomState(r + self.rid * 100)
@@ -166,21 +104,8 @@ def worker_init_fn(worker_id):
 
 
 def collate_fn(batch):
-    audio_data = torch.from_numpy(np.stack([b[1] for b in batch], 0)).long()
-
-    min_len = min([len(x[0]) for x in batch])
-    seq = []
-    index = []
-    for b in batch:
-        seq.append(b[0][:min_len])
-        index.append(b[2][:min_len])
-    midi_data = torch.from_numpy(np.stack(seq, 0)).long()
-    midi_index = torch.from_numpy(np.stack(index, 0)).long()
-    # print(midi_data.shape)
+    audio_data = torch.from_numpy(np.stack([b for b in batch], 0)).long()
 
     return {
-        "midi_seq": midi_data,
         "audio_seq": audio_data,
-        "midi_index": midi_index,
-        "audio_index": None
     }

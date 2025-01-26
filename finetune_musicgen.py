@@ -15,9 +15,9 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
 
-from shoelace.pfMIDILM.pop909_midi_dataset import MIDIDataset as Dataset
-from shoelace.pfMIDILM.pop909_midi_dataset import collate_fn, worker_init_fn
-from shoelace.actual_shoelace.shoelace import MIDILM
+from shoelace.actual_shoelace.pop909_audio_dataset import AudioDataset as Dataset
+from shoelace.actual_shoelace.pop909_audio_dataset import collate_fn, worker_init_fn
+from shoelace.actual_shoelace.models import AudioLMGEN
 
 device = "cuda"
 
@@ -56,14 +56,10 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
     device = torch.device('cuda', replica_id)
     torch.cuda.set_device(device)
 
-    if args.exp_name == "midi_lm_2048_8_8_1024_8_4":
-        from shoelace.pfMIDILM.config_2048_8_8_1024_8_4 import midi_lm_param, baby_param
-    if str.startswith(args.exp_name, "midi_lm_1024_8_12_512_8_3"):
-        from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
-    model = MIDILM(device, is_gen=True)
-    # model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
+
+    model = AudioLMGEN(device=device, sec=16)
+    # model.load_weights("save_models/pop_song_musicgen/latest_3_end.pth")
     model = model.to(device)
-    # model.set_config(device)
     model = DDP(model, [replica_id])
 
     dataset, dataloader = get_dataset(rid=replica_id,
