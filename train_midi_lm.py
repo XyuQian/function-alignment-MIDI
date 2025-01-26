@@ -17,7 +17,7 @@ from tqdm import tqdm
 
 from shoelace.pfMIDILM.midi_dataset import MIDIDataset as Dataset
 from shoelace.pfMIDILM.midi_dataset import collate_fn, worker_init_fn
-from shoelace.pfMIDILM.MIDILM_gen import MIDILM as Model
+from shoelace.pfMIDILM_gen import MIDILM as Model
 
 device = "cuda"
 

@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from .transformer_encoder_gen import TransformerEncoder, TransformerEncoderLayer
+from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from tqdm import tqdm
 from .preprocess_MIDI import SEG_RES
 

@@ -62,7 +62,7 @@ def get_musicgen(sec, device, is_gen, is_tuned):
 def get_midi_lm(device, is_tuned, is_gen):
     from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
     if is_gen:
-        from shoelace.pfMIDILM.MIDILM_gen import MIDILM
+        from shoelace.pfMIDILM_gen.MIDILM import MIDILM
     else:
         from shoelace.pfMIDILM.MIDILM import MIDILM
 
