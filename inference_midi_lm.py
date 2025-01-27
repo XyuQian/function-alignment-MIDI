@@ -29,7 +29,7 @@ def get_test_data(sec=256, res=50):
         # ["data/rwc/RM-P001.SMF_SYNC.MID", 120]
     ]
 
-    start_idx = 2
+    start_idx = 0
     seq = []
     prompt_len = []
     for i, (path, pl) in enumerate(names):
@@ -51,9 +51,9 @@ def get_test_data(sec=256, res=50):
         res_event_st = res_sos[start_idx]
         res_event_ed = res_sos[start_idx + 1]
         event = events[event_st: event_ed]
-        if res_event_ed > res_event_st:
-            prefix = res_events[res_event_st: res_event_ed]
-            event = np.concatenate([event[:1], prefix, event[1:]], 0)
+        # if res_event_ed > res_event_st:
+        #     prefix = res_events[res_event_st: res_event_ed]
+        #     event = np.concatenate([event[:1], prefix, event[1:]], 0)
         if len(event) > SEQ_LEN:
             event = event[:SEQ_LEN]
         event[event < 0] = PAD
@@ -133,12 +133,14 @@ def inference():
     from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
     # model = MIDILMGEN(device=device)
 
-    from shoelace.pfMIDILM_gen import MIDILM as Model
-    model = Model(param=midi_lm_param,
+    from shoelace.pfMIDILM_gen.MIDILM import MIDILM
+
+    model = MIDILM(param=midi_lm_param,
                   baby_param=baby_param)
-    model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
+    model.load_state_dict(torch.load("exp/midi_lm/latest_0_24000.pth", map_location="cpu"), strict=False)
     # model.load_weights("save_models/piano_lm/latest_39_end.pth")
     model = model.to(device)
+    model.set_config(device)
     model.eval()
 
     seq, prompt_len = get_test_data()
@@ -147,7 +149,7 @@ def inference():
     prompt_len = SEQ_LEN // 10
     input_seq = seq[:, :prompt_len]
     res = model.inference(input_seq, max_len=SEQ_LEN, top_k=16, temperature=1.)
-    for i in range(prompt_len*2):
+    for i in range(prompt_len * 2):
         print(i, prompt_len, "ref", seq[0, i])
         print(i, prompt_len, "ped", res[0, i])
         # print("------------------------------------")

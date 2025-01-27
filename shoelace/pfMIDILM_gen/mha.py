@@ -5,7 +5,7 @@ import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_normal_, xavier_uniform_
 from torch.nn.parameter import Parameter
 from torch.nn.modules.linear import NonDynamicallyQuantizableLinear
-from .mha_func_gen import multi_head_attention_forward
+from .mha_func import multi_head_attention_forward
 
 from typing import Any, Callable, Optional, Tuple
 

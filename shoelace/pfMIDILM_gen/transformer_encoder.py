@@ -6,7 +6,7 @@ from shoelace.utils.network_utils import freeze
 from torch.nn import Module, Linear, Dropout, LayerNorm
 import torch.nn.functional as F
 from shoelace.utils.network_utils import _get_clones, _get_seq_len, _detect_is_causal_mask, _get_activation_fn
-from .mha_gen import MultiheadAttention
+from .mha import MultiheadAttention
 
 
 class TransformerEncoderLayer(Module):
