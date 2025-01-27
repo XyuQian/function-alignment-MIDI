@@ -3,7 +3,14 @@ from .models import AudioLM, MIDILM
 MODEL_FACTORY = {
     "AudioLM": {
         "model": AudioLM,
-        "n_layers": 48,
+        "model_params": {
+            "n_layers": 48,
+            "sec": 16,
+            "r": 32,
+            "alpha_lora": 64,
+            # "alpha_lora": 32
+        },
+
         "low_rank_dim": 64,
         "hidden_size": 2048,
         "n_heads": 32,
@@ -20,10 +27,16 @@ MODEL_FACTORY = {
         "out": "audio_pred",
 
     },
+
     "MIDILM": {
         "model": MIDILM,
+        "model_params": {
+            "n_layers": 12,
+            "sec": 16,
+            "r": 32,
+            "alpha_lora": 64
+        },
         "low_rank_dim": 64,
-        "n_layers": 12,
         "hidden_size": 1024,
         "n_heads": 8,
         "steps": 1,

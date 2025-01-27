@@ -19,3 +19,9 @@ https://drive.google.com/drive/folders/13HO632GgtSTzUqe4IJLUXnWFO90UhS4o?usp=sha
 - [ ] RWC + MusicNet Score dataset
 - [ ] Finetune the model with the score dataset
 - [ ] MIDI-to-Score
+
+
+### A2S2A 01/27/2025
+
+- [ ] S2A
+- [ ] picogen2 pop2piano baseline

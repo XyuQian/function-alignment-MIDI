@@ -31,7 +31,7 @@ def save_lora_weights(network, path):
     torch.save(state, path + ".lora.pth")
 
 
-def get_musicgen(sec, device, is_gen, is_tuned):
+def get_musicgen(sec, device, is_gen, is_tuned, r=32, lora_alpha=64):
     if is_gen:
         from shoelace.adapt_musicgen_gen.models.musicgen import MusicGen
     else:
@@ -48,8 +48,8 @@ def get_musicgen(sec, device, is_gen, is_tuned):
                       "self_attn.out_proj"]
     config = LoraConfig(
         task_type="CAUSAL_LM",
-        r=32,
-        lora_alpha=64,
+        r=r,
+        lora_alpha=lora_alpha,
         target_modules=target_modules,
         lora_dropout=0.01,
     )
@@ -59,7 +59,7 @@ def get_musicgen(sec, device, is_gen, is_tuned):
     return mg
 
 
-def get_midi_lm(device, is_tuned, is_gen):
+def get_midi_lm(device, is_tuned, is_gen, r=32, lora_alpha=64):
     from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
     if is_gen:
         from shoelace.pfMIDILM_gen.MIDILM import MIDILM
@@ -89,8 +89,8 @@ def get_midi_lm(device, is_tuned, is_gen):
 
     config = LoraConfig(
         task_type="CAUSAL_LM",
-        r=32,
-        lora_alpha=64,
+        r=r,
+        lora_alpha=lora_alpha,
         target_modules=target_modules,
         lora_dropout=0.01,
     )
@@ -129,9 +129,10 @@ class MIDILMGEN(nn.Module):
 
 
 class AudioLMGEN(nn.Module):
-    def __init__(self, sec, device="cuda", frame_rate=50):
+    def __init__(self, sec, device="cuda", frame_rate=50, r=32, lora_alpha=64):
         super().__init__()
-        mg = get_musicgen(sec, device, is_gen=True, is_tuned=True)
+        mg = get_musicgen(sec, device, is_gen=True, is_tuned=True,
+                          r=r, lora_alpha=lora_alpha)
         self.musicgen = mg
         self.lm = mg.lm
         self.max_duration = sec
@@ -260,9 +261,10 @@ class AudioLMGEN(nn.Module):
 
 
 class MIDILM(nn.Module):
-    def __init__(self, sec, is_tuned, n_layers=None, device="cuda", frame_rate=50, is_gen=False):
+    def __init__(self, sec, is_tuned, n_layers=None, device="cuda", frame_rate=50,
+                 is_gen=False, r=32, lora_alpha=64):
         super().__init__()
-        lm, n_layers = get_midi_lm(device, is_gen=is_gen, is_tuned=is_tuned)
+        lm, n_layers = get_midi_lm(device, is_gen=is_gen, is_tuned=is_tuned, r=r, lora_alpha=lora_alpha)
         self.lm = lm
         self.max_duration = sec
         self.frame_rate = frame_rate

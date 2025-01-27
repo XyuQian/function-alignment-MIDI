@@ -2,8 +2,8 @@ import os
 import torch
 import numpy as np
 import pretty_midi
-from shoelace.pfMIDILM.preprocess_MIDI import load_midi, SEG_RES, RES_EVENT
-from shoelace.pfMIDILM.MIDILM import PAD
+from shoelace.pfMIDILM_gen.preprocess_MIDI import load_midi, SEG_RES, RES_EVENT
+from shoelace.pfMIDILM_gen.MIDILM import PAD
 
 device = "cuda"
 SEQ_LEN = 512
@@ -129,14 +129,16 @@ def store_midis(seq, output_folder):
 
 
 def inference():
-    from shoelace.actual_shoelace.models import MIDILMGEN
+    # from shoelace.actual_shoelace.models import MIDILMGEN
     from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
-    model = MIDILMGEN(device=device)
-    model.load_weights("save_models/piano_lm/latest_39_end.pth")
-    # model.load_state_dict(torch.load("exp/midi_lm/latest_0_42000.pth", map_location="cpu"))
-    # model.prepare_for_lora(device)
+    # model = MIDILMGEN(device=device)
+
+    from shoelace.pfMIDILM_gen import MIDILM as Model
+    model = Model(param=midi_lm_param,
+                  baby_param=baby_param)
+    model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
+    # model.load_weights("save_models/piano_lm/latest_39_end.pth")
     model = model.to(device)
-    # model.set_config(device)
     model.eval()
 
     seq, prompt_len = get_test_data()

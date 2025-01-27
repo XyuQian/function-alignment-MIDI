@@ -31,7 +31,9 @@ class Yinyang(nn.Module):
         names = []
         for i, m in enumerate(target_recipe["models"]):
             params = MODEL_FACTORY[m]
-            model = params["model"](sec=sec, is_tuned=i == 0, n_layers=params["n_layers"])
+            model_params = params["model_params"]
+            model_params["is_tuned"] = i == 0
+            model = params["model"](**model_params)
             if target_recipe["model_weights_path"][i] is not None:
                 model.load_weights(target_recipe["model_weights_path"][i])
             models.append(model)
@@ -48,7 +50,7 @@ class Yinyang(nn.Module):
             long_first = params["steps"] >= next_param["steps"]
             shoelace.append(
                 SholaceParam(
-                    n_layers=params["n_layers"],
+                    n_layers=model_params["n_layers"],
                     a_embed_dim=params["hidden_size"],
                     b_embed_dim=next_param["hidden_size"],
                     low_rank_dim=params["low_rank_dim"],
