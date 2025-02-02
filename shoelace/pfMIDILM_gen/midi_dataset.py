@@ -25,6 +25,7 @@ def load_data_lst(path_folder):
         files.append([s.rstrip().split("\t")[0] for s in fs])
         feature_path.append(f_path)
 
+
     return files, feature_path
 
 
@@ -91,6 +92,7 @@ class MIDIDataset(BaseDataset):
         eid = sid + MAX_SEQ_LEN
         eid = self.tlen[tid][fid] if self.tlen[tid][fid] < eid else eid
         data = self.data[tid][fname + ".events"][sid: eid][:]
+
         # if res_ed > res_st:
         #     prefix = self.data[tid][fname + ".res_events"][res_st: res_ed][:]
         #     data = np.concatenate([data[:1], prefix, data[1:]], 0)

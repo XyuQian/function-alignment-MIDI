@@ -15,8 +15,8 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
 
-from shoelace.pfMIDILM.midi_dataset import MIDIDataset as Dataset
-from shoelace.pfMIDILM.midi_dataset import collate_fn, worker_init_fn
+from shoelace.pfMIDILM_gen.midi_dataset import MIDIDataset as Dataset
+from shoelace.pfMIDILM_gen.midi_dataset import collate_fn, worker_init_fn
 from shoelace.pfMIDILM_gen.MIDILM import MIDILM as Model
 
 device = "cuda"
@@ -56,12 +56,12 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
     torch.cuda.set_device(device)
 
     if args.exp_name == "midi_lm_2048_8_8_1024_8_4":
-        from shoelace.pfMIDILM.config_2048_8_8_1024_8_4 import midi_lm_param, baby_param
+        from shoelace.pfMIDILM_gen.config_2048_8_8_1024_8_4 import midi_lm_param, baby_param
     if str.startswith(args.exp_name, "midi_lm_1024_8_12_512_8_3"):
-        from shoelace.pfMIDILM.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
+        from shoelace.pfMIDILM_gen.config_1024_8_12_512_8_3 import midi_lm_param, baby_param
     model = Model(param=midi_lm_param,
                   baby_param=baby_param)
-    # model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
+    model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
     model = model.to(device)
     model.set_config(device)
     model = DDP(model, [replica_id])

@@ -4,7 +4,7 @@ import sys
 import torch
 import numpy as np
 import pretty_midi
-from shoelace.pfMIDILM_gen.preprocess_MIDI import load_midi, SEG_RES, RES_EVENT
+from shoelace.pfMIDILM.preprocess_MIDI import load_midi, SEG_RES, RES_EVENT
 from shoelace.pfMIDILM_gen.MIDILM import PAD
 
 device = "cuda"
@@ -65,8 +65,6 @@ def get_test_data(sec=256, res=50):
     # return [torch.from_numpy(s) for s in seq], None
     return torch.from_numpy(np.stack(seq, 0)), prompt_len
 
-
-
 def add_notes(events, start_pos, instruments):
     start = events[0] + start_pos * SEG_RES
     instr = str(int(events[1]))
@@ -80,6 +78,63 @@ def add_notes(events, start_pos, instruments):
     instruments[instr].append(
         [start, pitch, end_x * SEG_RES + end_y, velocity]
     )
+
+# def add_notes(events, instruments):
+#     start = events[0] * SEG_RES + events[1]
+#     instr = str(int(events[3]))
+#     pitch = events[2]
+#     dur = events[5] * SEG_RES + events[6]
+#     velocity = events[4]
+#     # print(events)
+#     # print(instr, start, pitch, dur, velocity)
+#     if instr not in instruments:
+#         instruments[instr] = []
+#     instruments[instr].append(
+#         [start, pitch, dur, velocity]
+#     )
+
+
+# def decode(path, events, res=50):
+#     assert events[0][1] == SEG_RES
+#     cur_idx = 1
+#     instruments = {}
+#     while cur_idx < len(events) and events[cur_idx][1] == RES_EVENT:
+#         events[cur_idx][1] = 0
+#         add_notes(events[cur_idx], instruments)
+#         cur_idx += 1
+#     print("start...", cur_idx)
+#     while cur_idx < len(events):
+#         if events[cur_idx][1] in [PAD, RES_EVENT]:
+#             print(cur_idx, events[cur_idx], RES_EVENT, PAD)
+#             break
+#         print(cur_idx, events[cur_idx])
+#         if events[cur_idx][1] < SEG_RES:
+#             add_notes(events[cur_idx], instruments)
+#         cur_idx += 1
+#
+#     midi = pretty_midi.PrettyMIDI()
+#
+#     for instr in instruments:
+#         instr_id = int(instr)
+#         if instr_id == 128:
+#             program = pretty_midi.Instrument(program=0)
+#             program.is_drum = True
+#         else:
+#             program = pretty_midi.Instrument(program=instr_id)
+#
+#         for event in instruments[instr]:
+#             st = event[0] * 1. / res
+#             dur = event[2] * 1. / res
+#             if dur < 0.001:
+#                 continue
+#             note = pretty_midi.Note(velocity=event[3],
+#                                     pitch=event[1],
+#                                     start=st,
+#                                     end=st + dur)
+#             program.notes.append(note)
+#
+#         midi.instruments.append(program)
+#     midi.write(path)
 
 def decode(path, events, res=50):
     assert events[0][0] == SEG_RES
@@ -123,8 +178,6 @@ def decode(path, events, res=50):
         midi.instruments.append(program)
     midi.write(path)
 
-
-
 def store_midis(seq, output_folder):
     os.makedirs(output_folder, exist_ok=True)
     for i in range(len(seq)):
@@ -153,7 +206,7 @@ def inference(model_path):
 
     prompt_len = 128
     input_seq = seq[:, :prompt_len]
-    res = model.inference(input_seq, max_len=SEQ_LEN, top_k=16, temperature=1.)
+    res = model.inference(input_seq, max_len=SEQ_LEN, top_k=32, temperature=1.)
     # for i in range(prompt_len * 2):
     #     print(i, prompt_len, "ref", seq[0, i])
     #     print(i, prompt_len, "ped", res[0, i])
@@ -182,6 +235,6 @@ if __name__ == "__main__":
     output_folder = "test_results"
     os.makedirs(output_folder, exist_ok=True)
     eid = sys.argv[1]
-    model_path = f"exp/midi_lm_1024_8_12_512_8_3/latest_{eid}.pth"
+    model_path = f"exp/midi_lm/latest_{eid}.pth"
     inference(model_path=model_path)
     # cut_ref(output_folder)

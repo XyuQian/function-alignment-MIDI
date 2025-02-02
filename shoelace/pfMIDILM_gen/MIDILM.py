@@ -22,13 +22,42 @@ def sample(logits, top_k_val=20, temperature=1.):
 
 SOS = 130
 PAD = 131
-N_ONSET = 132
+N_ONSET_X = 132
+N_ONSET_Y = 132
 N_INSTRUMENT = 132
 N_PITCH = 132
 N_DUR_X = 132
 N_DUR_Y = 132
 N_VELOCITY = 132
 MAX_SEQ_LEN = 1500
+
+
+def check_fn(tgt, token, pre_token, i):
+    if token is None:
+        return True
+    if pre_token is None:
+        return False
+    # print(pre_token.shape, token.shape)
+    tgt = torch.concat([tgt, token], -1)
+    pre_token = pre_token.squeeze(1)
+    token = token.squeeze(1)
+    tgt = tgt.squeeze(1)
+    if i > 1:
+        return False
+    if i == 0:
+        for j in range(len(tgt)):
+            if SEG_RES > pre_token[j, 0] > token[j]:
+                return True
+    else:
+        for j in range(len(token)):
+            if i == 1 and (tgt[j, i] == SEG_RES or pre_token[j, i] == SEG_RES):
+                continue
+            if tgt[j, i] == pre_token[j, i - 1] and token[j] < pre_token[j, i]:
+                print(token[j], pre_token[j, i], "heeeeeeee")
+                return True
+
+    return False
+
 
 
 class PositionalEncoding(nn.Module):
@@ -75,7 +104,7 @@ class BabyLLM(nn.Module):
         return out
 
     @torch.no_grad()
-    def inference(self, memory, top_k=10, temperature=1.):
+    def inference(self, memory, pre_token, top_k=32, temperature=1.):
         memory = self.mem_linear(memory)
         tgt = torch.zeros([len(memory), 1]).to(memory.device).long() + SOS
         for i in range(self.n_steps):
@@ -85,7 +114,11 @@ class BabyLLM(nn.Module):
                                           tgt_mask=attn_mask,
                                           tgt_is_causal=True)
             logits = self.output_layer(decoder_output[:, -1:])
-            next_token = sample(logits, top_k_val=top_k, temperature=temperature)
+            next_token = None
+
+            while check_fn(tgt, next_token, pre_token, i):
+                next_token = sample(logits, top_k_val=top_k, temperature=temperature)
+
             tgt = torch.concat([tgt, next_token], -1)
         tgt = tgt[:, 1:]
         tgt[tgt[:, 0] == SEG_RES, 1:] = PAD
@@ -107,7 +140,7 @@ class InputEmbedding(nn.Module):
 class MIDILM(nn.Module):
     def __init__(self, param, baby_param):
         super(MIDILM, self).__init__()
-        n_words = [N_ONSET, N_INSTRUMENT,
+        n_words = [N_ONSET_X,  N_INSTRUMENT,
                    N_PITCH, N_DUR_X, N_DUR_Y,
                    N_VELOCITY]
         embedding_dim = param["embedding_dim"]
@@ -157,7 +190,6 @@ class MIDILM(nn.Module):
             yield outputs
 
     def lora_forward(self, x):
-
         input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS)
         baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS)
         target = x
@@ -188,7 +220,7 @@ class MIDILM(nn.Module):
         input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS)
         baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS)
         target = x
-
+        print(input_x.shape)
         # print(input_x.shape, baby_input_x.shape)
         embed_x = self.input_embedding(input_x)
         embed_x_with_pos = self.pos_encoding(embed_x)
@@ -214,7 +246,7 @@ class MIDILM(nn.Module):
     def inference(self, x, max_len=512, top_k=32, temperature=1.):
         x = F.pad(x, (0, 0, 1, 0), "constant", SOS)
         embed_x = self.input_embedding(x)
-        decoded_sequence = []
+        decoded_sequence = [None]
         assert x.shape[1] < max_len
         prompt_len = x.shape[1]
 
@@ -227,13 +259,14 @@ class MIDILM(nn.Module):
                                                       mask=attn_mask)
             decoder_output = decoder_output[:, -1:]
             next_token = self.baby_llm.inference(memory=decoder_output,
+                                                 pre_token=decoded_sequence[-1],
                                                  temperature=temperature,
                                                  top_k=top_k)
 
             next_token = next_token[:, None]
             decoded_sequence.append(next_token)
             embed_x = torch.concat([embed_x, self.input_embedding(next_token)], 1)
-        seq = torch.concat(decoded_sequence, 1)
+        seq = torch.concat(decoded_sequence[1:], 1)
         seq = torch.concat([x[:, 1:], seq], 1)
         return seq
 

@@ -76,6 +76,7 @@ def process_files(source_folder, target_folder,
                 target_h5.create_dataset(line + ".sos", data=src_h5[line + ".sos"][:].astype(np.int32))
                 target_h5.create_dataset(line + ".res_events", data=src_h5[line + ".res_events"][:].astype(np.int16))
                 target_h5.create_dataset(line + ".res_sos", data=src_h5[line + ".res_sos"][:].astype(np.int32))
+                target_h5.create_dataset(line + ".index", data=src_h5[line + ".index"][:].astype(np.int32))
 
     for f in file_data:
         file_data[f].close()

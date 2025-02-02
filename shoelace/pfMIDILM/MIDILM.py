@@ -74,7 +74,7 @@ class BabyLLM(nn.Module):
         return out
 
     @torch.no_grad()
-    def inference(self, memory, top_k=10, temperature=1.):
+    def inference(self, memory, top_k=32, temperature=1.):
         memory = self.mem_linear(memory)
         tgt = torch.zeros([len(memory), 1]).to(memory.device).long() + SOS
         for i in range(self.n_steps):

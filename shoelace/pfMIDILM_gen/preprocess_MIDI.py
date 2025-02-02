@@ -159,21 +159,36 @@ def load_midi(path, extract_melody=False, res=50, return_onset=False, remove_sil
 def extract_feature(file_path_lst, output_feature_path):
     with open(file_path_lst, "r") as f:
         lines = f.readlines()
-
-    for line in lines:
-        events, sos, res_events, res_sos, index = load_midi(line)
-    return
     lines = [line.rstrip() for line in lines]
+    # for line in lines:
+    #     results = load_midi(line.rstrip())
+    #     if results is None:
+    #         continue
+    #     events = results["events"]
+    #     sos = results["sos"]
+    #     res_events = results["res_events"]
+    #     res_sos = results["res_sos"]
+    #     index = results["index"]
+    #
+    #
+    # return
+
     with h5py.File(output_feature_path, "w") as hf:
         for line in lines:
-            events, sos, res_events, res_sos, index = load_midi(line)
-            if events is not None:
-                print(line)
-                hf.create_dataset(line + ".events", data=events.astype(np.int16))
-                hf.create_dataset(line + ".sos", data=sos.astype(np.int32))
-                hf.create_dataset(line + ".res_events", data=res_events.astype(np.int16))
-                hf.create_dataset(line + ".res_sos", data=res_sos.astype(np.int32))
-                hf.create_dataset(line + ".index", data=index.astype(np.int32))
+            results = load_midi(line)
+            if results is None:
+                continue
+            print(line)
+            events = results["events"]
+            sos = results["sos"]
+            res_events = results["res_events"]
+            res_sos = results["res_sos"]
+            index = results["index"]
+            hf.create_dataset(line + ".events", data=events.astype(np.int16))
+            hf.create_dataset(line + ".sos", data=sos.astype(np.int32))
+            hf.create_dataset(line + ".res_events", data=res_events.astype(np.int16))
+            hf.create_dataset(line + ".res_sos", data=res_sos.astype(np.int32))
+            hf.create_dataset(line + ".index", data=index.astype(np.int32))
             # break
 
 

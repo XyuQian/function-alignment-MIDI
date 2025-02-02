@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import pretty_midi
 from shoelace.pfMIDILM.preprocess_MIDI import load_midi, SEG_RES, RES_EVENT
 from shoelace.pfMIDILM.MIDILM import PAD
+from inference_midi_lm import decode
 
 device = "cuda"
 SEQ_LEN = 512
@@ -137,47 +138,7 @@ def add_notes(events, start_pos, instruments):
     )
 
 
-def decode(path, events, res=50):
-    # assert events[0][0] == SEG_RES
-    cur_idx = 1
-    instruments = {}
-    start_pos = 0
-    while cur_idx < len(events) and events[cur_idx][0] == RES_EVENT:
-        events[cur_idx][0] = 0
-        add_notes(events[cur_idx], start_pos, instruments)
-        cur_idx += 1
 
-    while cur_idx < len(events):
-        if events[cur_idx][0] in [PAD, RES_EVENT]:
-            print(cur_idx, events[cur_idx], RES_EVENT, PAD)
-            break
-        if events[cur_idx][0] < SEG_RES:
-            add_notes(events[cur_idx], start_pos, instruments)
-        else:
-            start_pos += 1
-        cur_idx += 1
-
-    midi = pretty_midi.PrettyMIDI()
-    for instr in instruments:
-        instr_id = int(instr)
-        if instr_id == 128:
-            program = pretty_midi.Instrument(program=0)
-            program.is_drum = True
-        else:
-            program = pretty_midi.Instrument(program=instr_id)
-
-        for event in instruments[instr]:
-            st = event[0] * 1. / res
-            ed = event[2] * 1. / res
-            if ed - st < 0.001:
-                continue
-            note = pretty_midi.Note(velocity=event[3],
-                                    pitch=event[1],
-                                    start=st,
-                                    end=ed)
-            program.notes.append(note)
-        midi.instruments.append(program)
-    midi.write(path)
 
 
 def store_midis(seq, output_folder):
@@ -262,11 +223,28 @@ def test_data_loader(output_folder):
     store_midis(midi_pred, output_folder)
 
 
+def test_midi_data_loader(output_folder):
+    from shoelace.pfMIDILM_gen.midi_dataset import MIDIDataset
+
+    dataset = MIDIDataset(path_folder="data/formatted/",
+                          rid=0,
+                          num_workers=0)
+    dataset.reset_random_seed(0, 0)
+
+    midi_pred = []
+    for i in range(0, 10):
+        midi_data = dataset.__getitem__(i)
+        print(midi_data.shape)
+        midi = torch.from_numpy(midi_data)
+        midi_pred.append(midi)
+    store_midis(midi_pred, output_folder)
+
+
 if __name__ == "__main__":
     mode = sys.argv[1]
     model_path = sys.argv[2]
     output_folder = os.path.join("test_results", mode)
     os.makedirs(output_folder, exist_ok=True)
-    # test_data_loader(output_folder)
-    inference(output_folder, model_path=model_path, mode=mode)
+    test_midi_data_loader(output_folder)
+    # inference(output_folder, model_path=model_path, mode=mode)
     # cut_ref(output_folder)
