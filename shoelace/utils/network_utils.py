@@ -5,6 +5,9 @@ from torch import Tensor
 from typing import Any, Callable, Optional, Union
 import torch.nn.functional as F
 
+def make_yield_from(x):
+    yield from x
+
 
 def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:
     if activation == "relu":

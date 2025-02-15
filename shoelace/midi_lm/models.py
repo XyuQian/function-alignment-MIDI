@@ -1,0 +1,225 @@
+import torch
+from tqdm import tqdm
+import torch.nn as nn
+import torch.nn.functional as F
+from shoelace.utils.network_utils import make_yield_from
+from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
+from .config import PAD, SOS, N_ONSET, \
+    N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES
+
+import torch
+
+
+def check_fn(tgt: torch.Tensor, token: torch.Tensor, pre_token: torch.Tensor, i: int) -> bool:
+    """
+    Checks whether a newly sampled token is valid based on prior constraints.
+
+    Args:
+        tgt (Tensor): The current generated sequence (batch_size, seq_len).
+        token (Tensor): The newly proposed token (batch_size, 1) or None.
+        pre_token (Tensor): The previous token constraints (batch_size, seq_len).
+        i (int): The current step in the generation process.
+
+    Returns:
+        bool: True if the token should be rejected and resampled, False otherwise.
+    """
+    # If no token is sampled yet, force resampling
+    if token is None:
+        return True
+
+    # If there's no prior token constraint, accept the token
+    if pre_token is None:
+        return False
+
+    # Ensure correct shapes
+    tgt = torch.cat([tgt, token], dim=-1)  # Append token to target sequence
+    pre_token = pre_token.squeeze(1)  # Remove singleton dimension if present
+    token = token.squeeze(1)  # Ensure token has correct shape
+    tgt = tgt.squeeze(1)  # Ensure tgt has correct shape
+
+    # If `i > 1`, accept the token without checking
+    if i > 1:
+        return False
+
+    # Special conditions for `i == 0`
+    if i == 0:
+        for j in range(len(tgt)):
+            if SEG_RES > pre_token[j, 0] > token[j]:
+                return True  # Resample if token violates segment boundary rules
+
+    # Special conditions for `i == 1`
+    else:
+        for j in range(len(token)):
+            if i == 1 and (tgt[j, i] == SEG_RES or pre_token[j, i] == SEG_RES):
+                continue  # Skip checks if SEG_RES token is present
+
+            if tgt[j, i] == pre_token[j, i - 1] and token[j] < pre_token[j, i]:
+                print(token[j], pre_token[j, i], "heeeeeeee")  # Debug print
+                return True  # Resample if constraints are violated
+
+    return False  # Token is valid
+
+
+def sample(logits, top_k_val=20, temperature=1.0):
+    """
+    Samples the next token from the logits using top-k sampling.
+    """
+    logits = logits / temperature
+    top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
+    top_k_probs = F.softmax(top_k_logits, dim=-1)
+    sampled_indices = torch.multinomial(top_k_probs.reshape(-1, top_k_probs.shape[-1]), num_samples=1)
+    sampled_indices = sampled_indices.view(logits.shape[:-1] + (1,))  # Ensure correct shape
+    next_token = top_k_indices.gather(-1, sampled_indices)
+    return next_token.view(-1, 1)  # Ensure proper dimensionality
+
+
+class BabyLLM(nn.Module):
+    def __init__(self, n_words, memory_dim, n_steps, embedding_dim, n_layers, n_heads):
+        """
+        A lightweight transformer-based model for sequence generation.
+        """
+        super().__init__()
+        self.in_layer = nn.Embedding(n_words, embedding_dim)
+        self.mem_linear = nn.Linear(memory_dim, embedding_dim)
+        self.pos_emb = nn.Parameter(torch.randn(1, n_steps, 1), requires_grad=True)
+        decoder_layer = nn.TransformerDecoderLayer(d_model=embedding_dim, nhead=n_heads, batch_first=True)
+        self.decoder = nn.TransformerDecoder(decoder_layer, num_layers=n_layers)
+        self.output_layer = nn.Linear(embedding_dim, n_words, bias=False)
+        self.n_steps = n_steps
+
+    @torch.no_grad()
+    def inference(self, memory, pre_token, top_k=32, temperature=1.0):
+        """
+        Performs inference step by step, generating new tokens from memory.
+        """
+        memory = self.mem_linear(memory)
+        tgt = torch.zeros([memory.shape[0], 1], dtype=torch.long, device=memory.device) + SOS
+
+        for i in range(self.n_steps):
+            attn_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(tgt.device)
+            input_x = self.in_layer(tgt) + self.pos_emb[:, :tgt.shape[1], :]
+            decoder_output = self.decoder(input_x, memory, tgt_mask=attn_mask, tgt_is_causal=True)
+            logits = self.output_layer(decoder_output[:, -1:])  # Ensure correct shape
+            # next_token = None
+
+            # while check_fn(tgt, next_token, pre_token, i):
+            next_token = sample(logits, top_k_val=top_k, temperature=temperature)
+
+            tgt = torch.cat([tgt, next_token], dim=1)
+
+        # Apply SEG_RES mask
+        tgt = tgt[:, 1:]  # Remove initial SOS
+        tgt[tgt[:, 0] == SEG_RES, 1:] = PAD  # Masking similar to first script
+        return tgt
+
+    def forward(self, tgt, memory):
+        tgt = self.in_layer(tgt) + self.pos_emb
+        memory = self.mem_linear(memory)
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(self.n_steps).to(tgt.device)
+        decoder_output = self.decoder(tgt, memory, tgt_mask=attn_mask, tgt_is_causal=True)
+        return self.output_layer(decoder_output)
+
+
+class PositionalEncoding(nn.Module):
+    def __init__(self, d_model, max_len=2049):
+        """
+        Implements positional encoding to provide position information to sequences.
+        """
+        super().__init__()
+        pe = torch.zeros(max_len, d_model)
+        position = torch.arange(max_len, dtype=torch.float).unsqueeze(1)
+        div_term = torch.exp(torch.arange(0, d_model, 2).float() * (-torch.log(torch.tensor(10000.0)) / d_model))
+        pe[:, 0::2] = torch.sin(position * div_term)
+        pe[:, 1::2] = torch.cos(position * div_term)
+        self.register_buffer("r_pos", pe.unsqueeze(0))
+
+    def forward(self, x):
+        return x + self.r_pos[:, :x.shape[1], :]
+
+
+class InputEmbedding(nn.Module):
+    def __init__(self, n_words, embedding_dim):
+        """
+        Embedding layer for multiple input features.
+        """
+        super().__init__()
+        self.layers = nn.ModuleList(nn.Embedding(n, embedding_dim) for n in n_words)
+
+    def forward(self, x):
+        return sum(self.layers[i](x[..., i]) for i in range(len(self.layers)))
+
+
+class MIDILM(nn.Module):
+    def __init__(self, param, baby_param, use_generator=False):
+        """
+        Transformer-based model for MIDI sequence modeling.
+        """
+        super().__init__()
+        self.use_generator = use_generator
+        embedding_dim = param["embedding_dim"]
+        self.input_embedding = InputEmbedding(n_words=[N_ONSET, N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY],
+                                              embedding_dim=embedding_dim)
+        self.pos_encoding = PositionalEncoding(d_model=embedding_dim)
+        decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True,
+                                                use_generator=use_generator)
+        self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"],
+                                                      use_generator=use_generator)
+        self.baby_llm = BabyLLM(**baby_param)
+
+    def forward(self, x, return_loss=True):
+        """
+        Forward pass for MIDI language modeling.
+        """
+        input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS)
+        embed_x = self.input_embedding(input_x)
+        embed_x_with_pos = self.pos_encoding(embed_x)
+        attn_mask = nn.Transformer.generate_square_subsequent_mask(x.shape[1]).to(x.device)
+        src_padding_mask = x[:, :, 0] == PAD
+
+        if self.use_generator:
+            decoder_output = make_yield_from(self.transformer_decoder(embed_x_with_pos,
+                                                                      src_key_padding_mask=src_padding_mask,
+                                                                      is_causal=True,
+                                                                      mask=attn_mask))
+        else:
+            decoder_output = self.transformer_decoder(embed_x_with_pos, src_key_padding_mask=src_padding_mask,
+                                                      is_causal=True, mask=attn_mask)
+        memory = decoder_output.flatten(0, 1)[:, None]
+        baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS).flatten(0, 1)
+        outputs = self.baby_llm(tgt=baby_input_x, memory=memory)
+        if return_loss:
+            return nn.CrossEntropyLoss(ignore_index=PAD)(outputs.flatten(0, 1), x.flatten())
+        return outputs
+
+    @torch.no_grad()
+    def inference(self, x, max_len=512, top_k=32, temperature=1.0):
+        """
+        Performs inference by generating a sequence step-by-step.
+        """
+        x = F.pad(x, (0, 0, 1, 0), "constant", SOS)
+        embed_x = self.input_embedding(x)
+        decoded_sequence = [None]
+        prompt_len = x.shape[1]
+
+        for _ in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
+            embedding = self.pos_encoding(embed_x)
+            attn_mask = nn.Transformer.generate_square_subsequent_mask(embedding.shape[1]).to(embedding.device)
+            decoder_output = self.transformer_decoder(embedding, is_causal=True, mask=attn_mask)
+            # print(decoder_output[0, 0, :4])
+            # for j in range(10):
+            #     print("inference", decoder_output[0, j, :4])
+            decoder_output = decoder_output[:, -1:]
+            next_token = self.baby_llm.inference(memory=decoder_output,
+                                                 pre_token=decoded_sequence[-1],
+                                                 temperature=temperature, top_k=top_k)
+            decoded_sequence.append(next_token[:, None])
+            embed_x = torch.cat([embed_x, self.input_embedding(next_token[:, None])], dim=1)
+            # break
+
+        return torch.cat([x[:, 1:]] + decoded_sequence[1:], dim=1)
+
+    def save_weights(self, model_path):
+        """
+        Saves the model's state dictionary.
+        """
+        torch.save(self.state_dict(), model_path)
