@@ -64,6 +64,8 @@ class MusicGen(nn.Module):
                       conditions=None)
 
             if return_loss:
+                x = x[:, 1:]
+                pred = pred[:, :-1]
                 return nn.CrossEntropyLoss(ignore_index=PAD)(pred.flatten(0, 2), x.flatten())
         if with_postprocess:
             pred = postprocess(pred)
