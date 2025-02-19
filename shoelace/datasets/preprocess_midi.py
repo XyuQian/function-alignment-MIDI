@@ -4,7 +4,7 @@ import os
 import sys
 import h5py
 
-from shoelace.midi_lm.config import SEG_RES, RES_EVENT
+from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
 
 saxophone_ranges = {
     "Soprano Sax": (60, 81),  # C4 to A5

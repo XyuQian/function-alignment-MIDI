@@ -5,8 +5,21 @@ from torch import Tensor
 from typing import Any, Callable, Optional, Union
 import torch.nn.functional as F
 
+
+def generator_switch(x, use_generator, use_from=True):
+    if not use_generator:
+        return x
+    if use_from:
+        make_yield_from(x)
+    else:
+        make_yield(x)
+
+
 def make_yield_from(x):
     yield from x
+
+def make_yield(x):
+    yield x
 
 
 def _get_activation_fn(activation: str) -> Callable[[Tensor], Tensor]:

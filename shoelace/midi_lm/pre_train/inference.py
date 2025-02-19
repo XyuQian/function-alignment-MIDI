@@ -4,13 +4,11 @@ import torch
 import numpy as np
 import pretty_midi
 from shoelace.datasets.preprocess_midi import load_midi, SEG_RES, RES_EVENT
-from shoelace.midi_lm.config import midi_lm_param, baby_param, PAD
-from shoelace.midi_lm.models import MIDILM
-from shoelace.utils.network_utils import print_params
-from typing import Dict, List
+from shoelace.midi_lm.models.config import midi_lm_param, baby_param, PAD
+from shoelace.midi_lm.models.midi_lm import MIDILM
 
 device = "cuda"
-SEQ_LEN = 256
+SEQ_LEN = 768
 
 
 def get_test_data():
@@ -121,7 +119,7 @@ def run_inference(model_path, output_folder):
     input_seq, num_samples = get_test_data()
     input_seq = input_seq.to(device).long()
 
-    generated_seq = model.inference(input_seq[:, :32], max_len=SEQ_LEN, top_k=24, temperature=1.0)
+    generated_seq = model.inference(input_seq[:, :128], max_len=SEQ_LEN, top_k=16, temperature=1.0)
 
     # for i in range(20):
     #     print(generated_seq[0, i + 124])
@@ -129,12 +127,12 @@ def run_inference(model_path, output_folder):
     #     print("----------------------------")
 
     save_midi_sequences(generated_seq, os.path.join(output_folder, "generated"))
-    save_midi_sequences(input_seq[:, :32], os.path.join(output_folder, "reference"))
+    save_midi_sequences(input_seq[:, :128], os.path.join(output_folder, "reference"))
 
 
 if __name__ == "__main__":
     output_folder = "test_results"
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
-    model_path = f"exp/midi_lm/latest_{model_id}.pth.new_version.new_version"
+    model_path = f"exp/midi_lm_continue/latest_{model_id}.pth"
     run_inference(model_path, output_folder)

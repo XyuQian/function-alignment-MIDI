@@ -5,9 +5,8 @@ import torch.nn.functional as F
 from torch.nn.init import constant_, xavier_uniform_
 from torch.nn.parameter import Parameter
 from .mha_func import multi_head_attention_forward
-from .yield_mha_func import multi_head_attention_forward as yield_multi_head_attention_forward
 from typing import Optional, Tuple
-from shoelace.utils.network_utils import make_yield_from
+from shoelace.utils.network_utils import generator_switch
 
 class MultiheadAttention(Module):
     """
@@ -69,39 +68,22 @@ class MultiheadAttention(Module):
         Computes multi-head attention using scaled dot-product attention.
         """
 
-        if self.use_generator:
-            attn_output, attn_output_weights = make_yield_from(yield_multi_head_attention_forward(
-                query,
-                query,
-                query,
-                self.embed_dim,
-                self.num_heads,
-                self.q_proj,
-                self.k_proj,
-                self.v_proj,
-                self.dropout,
-                self.out_proj,
-                key_padding_mask=key_padding_mask,
-                attn_mask=attn_mask,
-                is_causal=is_causal,
-                training=self.training
-            ))
-        else:
-            attn_output, attn_output_weights = multi_head_attention_forward(
-                query,
-                query,
-                query,
-                self.embed_dim,
-                self.num_heads,
-                self.q_proj,
-                self.k_proj,
-                self.v_proj,
-                self.dropout,
-                self.out_proj,
-                key_padding_mask=key_padding_mask,
-                attn_mask=attn_mask,
-                is_causal=is_causal,
-                training=self.training
-            )
+        attn_output = generator_switch(multi_head_attention_forward(
+            query,
+            query,
+            query,
+            self.embed_dim,
+            self.num_heads,
+            self.q_proj,
+            self.k_proj,
+            self.v_proj,
+            self.dropout,
+            self.out_proj,
+            key_padding_mask=key_padding_mask,
+            attn_mask=attn_mask,
+            is_causal=is_causal,
+            training=self.training,
+            use_generator=self.use_generator
+        ), use_generator=self.use_generator)
 
-        return attn_output, attn_output_weights
+        return attn_output

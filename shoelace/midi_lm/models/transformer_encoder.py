@@ -3,7 +3,7 @@ from torch import Tensor
 from typing import Callable, Optional, Union
 from torch.nn import Module, Linear, Dropout, LayerNorm
 import torch.nn.functional as F
-from shoelace.utils.network_utils import _get_clones, _get_activation_fn, make_yield_from
+from shoelace.utils.network_utils import _get_clones, _get_activation_fn, generator_switch
 from .mha import MultiheadAttention
 
 
@@ -52,7 +52,6 @@ class TransformerEncoderLayer(Module):
 
         self.use_generator = use_generator
 
-
     def forward(
             self, src, src_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,
             is_causal: bool = False
@@ -62,30 +61,28 @@ class TransformerEncoderLayer(Module):
         """
 
         x = src
-        hidden_state = self.norm1(x) if self.norm_first else x
-
-        if self.use_generator:
-            dx = make_yield_from(self._sa_block(hidden_state, src_mask, src_key_padding_mask, is_causal))
+        if self.norm_first:
+            x = x + generator_switch(self._sa_block(
+                self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal
+            ), use_generator=self.use_generator)
+            x = x + self._ff_block(self.norm2(x))
         else:
-            dx = self._sa_block(hidden_state, src_mask, src_key_padding_mask, is_causal)
+            x = self.norm1(
+                x
+                + generator_switch(self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal
+                                                  ), use_generator=self.use_generator))
+            x = self.norm2(x + self._ff_block(x))
 
-        x = self.norm1(x + dx) if not self.norm_first else x + dx
-        x = self.norm2(x + self._ff_block(x))
-        return x, hidden_state
+        return x
 
     def _sa_block(self, x: Tensor, attn_mask: Optional[Tensor], key_padding_mask: Optional[Tensor],
                   is_causal: bool = False):
         """
         Self-attention block with optional generator-based support.
         """
-        if self.use_generator:
-            x = make_yield_from(self.self_attn(
-                x, attn_mask=attn_mask, key_padding_mask=key_padding_mask, need_weights=False, is_causal=is_causal
-            ))
-        else:
-            x = self.self_attn(
-                x, attn_mask=attn_mask, key_padding_mask=key_padding_mask, need_weights=False, is_causal=is_causal
-            )[0]
+        x = generator_switch(self.self_attn(
+            x, attn_mask=attn_mask, key_padding_mask=key_padding_mask, need_weights=False, is_causal=is_causal
+        ), use_generator=self.use_generator)
         return self.dropout1(x)
 
     def _ff_block(self, x: Tensor) -> Tensor:
@@ -108,7 +105,6 @@ class TransformerEncoder(Module):
         self.norm = norm
         self.use_generator = use_generator
 
-
     def forward(self, src, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,
                 is_causal: Optional[bool] = None):
         """
@@ -117,11 +113,9 @@ class TransformerEncoder(Module):
         output = src
 
         for layer in self.layers:
-            output, hidden_state = make_yield_from(layer(
+            output = generator_switch(layer(
                 output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, is_causal=is_causal
-            )) if self.use_generator else layer(
-                output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, is_causal=is_causal
-            )
+            ), use_generator=self.use_generator)
 
         if self.norm is not None:
             output = self.norm(output)

@@ -1,6 +1,6 @@
 lr=8e-5
 exp=exp
-batch_size=10
+batch_size=12
 e=2
 w=4
 exp_dir=midi_lm_continue
