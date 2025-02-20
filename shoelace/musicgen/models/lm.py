@@ -20,7 +20,7 @@ from ..modules.codebooks_patterns import CodebooksPatternProvider
 from ..modules.activations import get_activation_fn
 from ..utils import utils
 
-from shoelace.utils.network_utils import generator_switch, print_params
+from shoelace.utils.network_utils import print_params
 
 logger = logging.getLogger(__name__)
 
@@ -215,8 +215,7 @@ class LMModel(nn.Module):
             x, x_cross = self.fuser(x, condition_tensors)
         else:
             x_cross = None
-        out = generator_switch(self.transformer(x, cross_src=x_cross),
-                               use_generator=self.use_generator)
+        out = yield from self.transformer(x, cross_src=x_cross)
         if self.out_norm:
             out = self.out_norm(out)
 

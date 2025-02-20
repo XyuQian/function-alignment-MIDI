@@ -1,27 +1,27 @@
 import torch
 from torch import Tensor
 from torch.nn import Module, Linear, Dropout
-import torch.nn.functional as F
+
 from torch.nn.init import constant_, xavier_uniform_
-from torch.nn.parameter import Parameter
 from .mha_func import multi_head_attention_forward
 from typing import Optional, Tuple
-from shoelace.utils.network_utils import generator_switch
+
 
 class MultiheadAttention(Module):
     """
     Implements Multihead Attention as described in 'Attention Is All You Need'.
     """
+
     def __init__(
-        self,
-        embed_dim: int,
-        num_heads: int,
-        dropout: float = 0.0,
-        bias: bool = True,
-        batch_first: bool = False,
-        device=None,
-        dtype=None,
-        use_generator: bool = False,
+            self,
+            embed_dim: int,
+            num_heads: int,
+            dropout: float = 0.0,
+            bias: bool = True,
+            batch_first: bool = False,
+            device=None,
+            dtype=None,
+            use_generator: bool = False,
     ) -> None:
         super().__init__()
         factory_kwargs = {"device": device, "dtype": dtype}
@@ -34,7 +34,7 @@ class MultiheadAttention(Module):
         self.head_dim = embed_dim // num_heads
 
         assert (
-            self.head_dim * num_heads == self.embed_dim
+                self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
 
         self.q_proj = Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
@@ -57,18 +57,18 @@ class MultiheadAttention(Module):
             constant_(self.out_proj.bias, 0.0)
 
     def forward(
-        self,
-        query: Tensor,
-        key_padding_mask: Optional[Tensor] = None,
-        need_weights: bool = True,
-        attn_mask: Optional[Tensor] = None,
-        is_causal: bool = False,
+            self,
+            query: Tensor,
+            key_padding_mask: Optional[Tensor] = None,
+            need_weights: bool = True,
+            attn_mask: Optional[Tensor] = None,
+            is_causal: bool = False,
     ) -> Tuple[Tensor, Optional[Tensor]]:
         """
         Computes multi-head attention using scaled dot-product attention.
         """
 
-        attn_output = generator_switch(multi_head_attention_forward(
+        attn_output = yield from multi_head_attention_forward(
             query,
             query,
             query,
@@ -84,6 +84,6 @@ class MultiheadAttention(Module):
             is_causal=is_causal,
             training=self.training,
             use_generator=self.use_generator
-        ), use_generator=self.use_generator)
+        )
 
         return attn_output

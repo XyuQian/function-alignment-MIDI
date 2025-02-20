@@ -3,8 +3,8 @@ import torch.nn as nn
 from types import SimpleNamespace
 from peft import LoraConfig, get_peft_model
 
-from ..models.musicgen import MusicGen
-from shoelace.utils.network_utils import print_params
+from ..models.midi_lm import MIDILM
+from shoelace.utils.network_utils import print_params, freeze
 
 
 def prepare_inputs_for_generation(input_ids, **kwargs):
@@ -22,40 +22,41 @@ class FakeConfig:
         return getattr(self, key, default)
 
 
-class MusicGenLora(nn.Module):
+class MIDILMLora(nn.Module):
     """
     A wrapper around MusicGen that applies LoRA to the transformer layers.
     """
 
-    def __init__(self, name, device, r=8, lora_alpha=16, use_generator=False):
+    def __init__(self, r=8, lora_alpha=16, use_generator=False):
         super().__init__()
         # 1) Initialize base MusicGen model on the specified device
-        musicgen = MusicGen(name=name, device=device, use_generator=use_generator)
+        from ..models.config import baby_param, midi_lm_param
+        midi_lm = MIDILM(param=midi_lm_param, baby_param=baby_param, use_generator=use_generator)
 
         # 2) Provide a dummy config so PEFT doesn't crash
         #    model_type can be anything recognized, e.g. "gpt2" or "mpt"
-        musicgen.config = FakeConfig()
+        midi_lm.config = FakeConfig()
 
         # 3) Insert a minimal 'prepare_inputs_for_generation' method
-        musicgen.prepare_inputs_for_generation = prepare_inputs_for_generation
+        midi_lm.prepare_inputs_for_generation = prepare_inputs_for_generation
 
         # 4) Configure LoRA
         target_modules = [
             "self_attn.q_proj",
             "self_attn.k_proj",
             "self_attn.v_proj",
-            "self_attn.out_proj",
         ]
+        for i in range(len(midi_lm.transformer_decoder.layers)):
+            target_modules.append(f"transformer_decoder.layers.{i}.self_attn.out_proj")
         lora_config = LoraConfig(
-            task_type="musicgen",
+            task_type="midi_lm",
             r=r,
             lora_alpha=lora_alpha,
             target_modules=target_modules,
             lora_dropout=0.02,
         )
-        # 5) Convert musicgen to a LoRA-enabled model
-        musicgen.prepare_for_lora()
-        self.musicgen = get_peft_model(musicgen, lora_config)
+        self.midi_lm = get_peft_model(midi_lm, lora_config)
+        freeze(self.midi_lm.baby_lm, False)
         print_params(self)
 
     def forward(self, x, **kwargs):
@@ -63,14 +64,13 @@ class MusicGenLora(nn.Module):
         Forward pass for the LoRA-wrapped model.
         Adjust as needed for your LM signature.
         """
-        return self.musicgen(x, **kwargs)
-
+        return self.midi_lm(x, **kwargs)
 
     def save_weights(self, path: str):
         """
         Saves only LoRA-related parameters.
         """
-        state = self.musicgen.state_dict()
+        state = self.midi_lm.state_dict()
         for key in list(state.keys()):
             if "lora_A" not in key and "lora_B" not in key:
                 state.pop(key)
@@ -82,5 +82,5 @@ class MusicGenLora(nn.Module):
         Loads LoRA-only weights from saved .lora.pth file.
         """
         lora_state = torch.load(path + ".lora.pth", map_location="cpu")
-        self.musicgen.load_state_dict(lora_state, strict=strict)
+        self.midi_lm.load_state_dict(lora_state, strict=strict)
         print(f"LoRA weights loaded from: {path}.lora.pth")

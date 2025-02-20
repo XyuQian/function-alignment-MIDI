@@ -3,7 +3,7 @@ from torch import Tensor
 from typing import Callable, Optional, Union
 from torch.nn import Module, Linear, Dropout, LayerNorm
 import torch.nn.functional as F
-from shoelace.utils.network_utils import _get_clones, _get_activation_fn, generator_switch
+from shoelace.utils.network_utils import _get_clones, _get_activation_fn
 from .mha import MultiheadAttention
 
 
@@ -62,15 +62,15 @@ class TransformerEncoderLayer(Module):
 
         x = src
         if self.norm_first:
-            x = x + generator_switch(self._sa_block(
+            x = x + (yield from self._sa_block(
                 self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal
-            ), use_generator=self.use_generator)
+            ))
             x = x + self._ff_block(self.norm2(x))
         else:
             x = self.norm1(
                 x
-                + generator_switch(self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal
-                                                  ), use_generator=self.use_generator))
+                + (yield from self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal
+                                                  )))
             x = self.norm2(x + self._ff_block(x))
 
         return x
@@ -80,9 +80,9 @@ class TransformerEncoderLayer(Module):
         """
         Self-attention block with optional generator-based support.
         """
-        x = generator_switch(self.self_attn(
+        x = (yield from self.self_attn(
             x, attn_mask=attn_mask, key_padding_mask=key_padding_mask, need_weights=False, is_causal=is_causal
-        ), use_generator=self.use_generator)
+        ))
         return self.dropout1(x)
 
     def _ff_block(self, x: Tensor) -> Tensor:
@@ -113,9 +113,9 @@ class TransformerEncoder(Module):
         output = src
 
         for layer in self.layers:
-            output = generator_switch(layer(
+            output = yield from layer(
                 output, src_mask=mask, src_key_padding_mask=src_key_padding_mask, is_causal=is_causal
-            ), use_generator=self.use_generator)
+            )
 
         if self.norm is not None:
             output = self.norm(output)

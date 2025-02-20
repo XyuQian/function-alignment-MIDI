@@ -3,9 +3,7 @@ import librosa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from .lm import LMModel
-from .builders import get_debug_compression_model, get_debug_lm_model
-from .loaders import load_compression_model, load_lm_model, HF_MODEL_CHECKPOINTS_MAP
+from .loaders import load_compression_model, load_lm_model
 from ..utils.autocast import TorchAutocast
 from ..data.audio import audio_write
 
@@ -28,13 +26,15 @@ def postprocess(x):
 
 
 class MusicGen(nn.Module):
-    def __init__(self, name: str, device):
+    def __init__(self, name: str, device, use_generator: bool = False):
         super().__init__()
         self.compression_model = None
         self.name = name
         cache_dir = os.environ.get('MUSICGEN_ROOT', None)
 
         self.lm = load_lm_model(name, device=device, cache_dir=cache_dir)
+        self.lm.use_generator = use_generator
+        self.use_generator = use_generator
         if device.type == 'cpu':
             self.autocast = TorchAutocast(enabled=False)
         else:
@@ -54,22 +54,26 @@ class MusicGen(nn.Module):
     def postprocess(self, audio_seq):
         pass
 
-    def forward(self, input_ids, with_preprocess=True,
-                with_postprocess=True, return_loss=True):
+    def yield_forward(self, input_ids, with_preprocess=True,
+                      with_postprocess=True, return_loss=True):
         lm = self.lm
         x = preprocess(input_ids) if with_preprocess else input_ids
 
         with self.autocast:
-            pred = lm(sequence=x.transpose(1, 2),
-                      conditions=None)
+            pred = yield from lm(sequence=x.transpose(1, 2),
+                                 conditions=None)
 
             if return_loss:
                 x = x[:, 1:]
                 pred = pred[:, :-1]
-                return nn.CrossEntropyLoss(ignore_index=PAD)(pred.flatten(0, 2), x.flatten())
+                yield nn.CrossEntropyLoss(ignore_index=PAD)(pred.flatten(0, 2), x.flatten())
         if with_postprocess:
             pred = postprocess(pred)
-        return pred
+        yield pred
+
+    def forward(self, input_ids, **kwargs):
+        generator = self.yield_forward(input_ids, **kwargs)
+        return next(generator)
 
     def load_compression_model(self):
         if self.compression_model is None:
@@ -102,7 +106,7 @@ if __name__ == "__main__":
     model.prepare_for_lora()
     model.eval()
     seq = model.load_from_audio(audio_path)
-    seq = seq[:, 50*10:20*50]
+    seq = seq[:, 50 * 10:20 * 50]
     print(seq.shape)
     with torch.no_grad():
         y = model(seq, return_loss=False)

@@ -1,8 +1,6 @@
-import torch
 from torch import Tensor
 import torch.nn.functional as F
 from typing import Optional, Tuple, Callable
-from shoelace.utils.network_utils import make_yield
 
 
 def multi_head_attention_forward(
@@ -69,7 +67,7 @@ def multi_head_attention_forward(
             "q": q
         }
         wrap_attn_output = [yield_output]
-        make_yield(wrap_attn_output)
+        yield wrap_attn_output
         attn_output = wrap_attn_output[0]["attn_output"]
 
     attn_output = out_proj(attn_output)

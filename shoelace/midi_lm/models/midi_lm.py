@@ -1,7 +1,6 @@
 from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
-from shoelace.utils.network_utils import make_yield_from
 from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
     N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES
@@ -196,7 +195,7 @@ class MIDILM(nn.Module):
                                                       use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
 
-    def forward(self, x, return_loss=True):
+    def yield_forward(self, x, return_loss=True):
         """
         Forward pass for MIDI language modeling.
         """
@@ -209,20 +208,21 @@ class MIDILM(nn.Module):
 
         src_padding_mask = x[:, :, 0] == PAD
 
-        if self.use_generator:
-            decoder_output = make_yield_from(self.transformer_decoder(embed_x_with_pos,
-                                                                      src_key_padding_mask=src_padding_mask,
-                                                                      is_causal=False,
-                                                                      mask=attn_mask))
-        else:
-            decoder_output = self.transformer_decoder(embed_x_with_pos, src_key_padding_mask=src_padding_mask,
-                                                      is_causal=False, mask=attn_mask)
+        decoder_output = yield from self.transformer_decoder(embed_x_with_pos,
+                                                             src_key_padding_mask=src_padding_mask,
+                                                             is_causal=False,
+                                                             mask=attn_mask)
+
         memory = decoder_output.flatten(0, 1)[:, None]
         baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS).flatten(0, 1)
         outputs = self.baby_llm(tgt=baby_input_x, memory=memory)
         if return_loss:
-            return nn.CrossEntropyLoss(ignore_index=PAD)(outputs.flatten(0, 1), x.flatten())
-        return outputs
+            yield nn.CrossEntropyLoss(ignore_index=PAD)(outputs.flatten(0, 1), x.flatten())
+        yield outputs
+
+    def forward(self, x, **kwargs):
+        generator = self.yield_forward(x, **kwargs)
+        return next(generator)
 
     @torch.no_grad()
     def inference(self, x, max_len=512, top_k=32, temperature=1.0):
@@ -247,7 +247,6 @@ class MIDILM(nn.Module):
                                                  temperature=temperature, top_k=top_k)
             decoded_sequence.append(next_token[:, None])
             embed_x = torch.cat([embed_x, self.input_embedding(next_token[:, None])], dim=1)
-
 
         return torch.cat([x[:, 1:]] + decoded_sequence[1:], dim=1)
 
@@ -275,4 +274,5 @@ if __name__ == "__main__":
     # Forward pass for MIDILM
     tgt[0, -4:] = PAD
     loss = midi_lm(tgt)
+
     print("MIDILM Loss:", loss.item())  # Should return a loss value

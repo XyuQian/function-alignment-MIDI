@@ -16,7 +16,8 @@ def generator_switch(x, use_generator, use_from=True):
 
 
 def make_yield_from(x):
-    yield from x
+    res = yield from x
+    return res
 
 def make_yield(x):
     yield x

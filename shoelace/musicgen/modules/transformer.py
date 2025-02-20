@@ -6,8 +6,6 @@ from einops import rearrange
 from typing import Optional, Tuple, Any, Dict
 from torch.utils.checkpoint import checkpoint  # for gradient checkpointing
 
-from shoelace.utils.network_utils import make_yield, generator_switch
-
 ###############################################################################
 # Utility: Sin Embedding, Norm, LayerScale
 ###############################################################################
@@ -150,7 +148,7 @@ class BasicMultiheadAttention(nn.Module):
                 "query": query,
                 "q": q
             }]
-            make_yield(wrap_attn_output)
+            yield wrap_attn_output
             x = wrap_attn_output[0]["attn_output"]
 
         # Out projection
@@ -246,10 +244,7 @@ class TransformerEncoderLayer(nn.TransformerEncoderLayer):
         if self.norm_first:
             # 1) Self-attn
             norm_x = self.norm1(x)
-            sa_out = generator_switch(
-                self.self_attn(norm_x, norm_x, norm_x, attn_mask=src_mask),
-                use_generator=self.use_generator
-            )
+            sa_out = yield from self.self_attn(norm_x, norm_x, norm_x, attn_mask=src_mask)
             x = x + self.layer_scale_1(self.dropout1(sa_out))
 
             # 2) Cross-attn
@@ -262,10 +257,7 @@ class TransformerEncoderLayer(nn.TransformerEncoderLayer):
             return x + self.layer_scale_2(self.dropout2(ff_out))
         else:
             # 1) Self-attn
-            sa_out = generator_switch(
-                self.self_attn(x, x, x, attn_mask=src_mask),
-                use_generator=self.use_generator
-            )
+            sa_out = yield from self.self_attn(x, x, x, attn_mask=src_mask)
             x = self.norm1(x + self.layer_scale_1(self.dropout1(sa_out)))
 
             # 2) Cross-attn
@@ -370,8 +362,8 @@ class Transformer(nn.Module):
 
         # Pass through each layer, potentially with gradient checkpointing
         for layer in self.layers:
-            out = self._apply_layer(layer, x, src_mask, cross_src)
-            x = generator_switch(out, use_generator=self.use_generator)
+            out = yield from self._apply_layer(layer, x, src_mask, cross_src)
+            x = out
 
         return x
 

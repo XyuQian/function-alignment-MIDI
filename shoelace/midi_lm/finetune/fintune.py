@@ -12,9 +12,9 @@ from shoelace.utils.trainer_utils import Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
-from shoelace.musicgen.finetune.data_loader import AudioDataset as Dataset
-from shoelace.musicgen.finetune.data_loader import collate_fn, worker_init_fn
-from shoelace.musicgen.finetune.musicgen import MusicGenLora as Model
+from shoelace.midi_lm.finetune.data_loader import MIDIDataset as Dataset
+from shoelace.midi_lm.finetune.data_loader import collate_fn, worker_init_fn
+from shoelace.midi_lm.finetune.midi_lm import MIDILMLora as Model
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -158,7 +158,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     logging.info(f"Initializing process group for replica {replica_id}/{replica_count}")
 
-    model = Model(name="large", device=device)
+    model = Model()
     model = model.to(device)
     model = DDP(model, [replica_id])
 
