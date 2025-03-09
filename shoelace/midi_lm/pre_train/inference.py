@@ -18,8 +18,8 @@ def get_test_data():
         "data/POP909/803/803.mid",
         "data/POP909/860/860.mid",
         "data/POP909/757/757.mid",
-        "data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA/MIDIs/f/f370a190b7901932cae04037e29ef6cf.mid",
-        "data/rwc/RM-P001.SMF_SYNC.MID"
+        # "data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA/MIDIs/f/f370a190b7901932cae04037e29ef6cf.mid",
+        # "data/rwc/RM-P001.SMF_SYNC.MID"
     ]
     sequences = []
 
