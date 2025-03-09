@@ -263,8 +263,8 @@ class MIDILM(nn.Module):
 
         
 
-    def forward(self, x, **kwargs):
-        generator = self.yield_forward(x, **kwargs)
+    def forward(self, input_ids, **kwargs):
+        generator = self.yield_forward(input_ids, **kwargs)
         return next(generator)
 
     @torch.no_grad()
