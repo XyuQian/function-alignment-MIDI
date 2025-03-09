@@ -131,7 +131,7 @@ def collate_fn(batch):
         for x in batch
     ]
 
-    return {"x": torch.from_numpy(np.stack(seq, axis=0)).long()}
+    return {"input_ids": torch.from_numpy(np.stack(seq, axis=0)).long()}
 
 
 if __name__ == "__main__":

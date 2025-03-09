@@ -62,12 +62,12 @@ class MIDILMLora(nn.Module):
         freeze(self.midi_lm.input_embedding, False)
         print_params(self)
 
-    def forward(self, x, **kwargs):
+    def forward(self, input_ids, **kwargs):
         """
         Forward pass for the LoRA-wrapped model.
         Adjust as needed for your LM signature.
         """
-        return self.midi_lm(x, **kwargs)
+        return self.midi_lm(input_ids, **kwargs)
 
     def inference(self, x, **kwargs):
         return self.midi_lm.inference(x, **kwargs)
