@@ -57,7 +57,7 @@ def evaluate(model, dataloader, e, i, device):
     dl = tqdm(dataloader, desc=f"Evaluate epoch {e} step {i}")
     for batch in dl:
 
-        loss = model(**move_to_device(batch, dev))
+        loss = model(**move_to_device(batch, device))
         total_loss += loss.item()
         num_batches += 1
 
