@@ -33,7 +33,7 @@ class MIDILMLora(nn.Module):
         # 1) Initialize base MusicGen model on the specified device
         from ..models.config import baby_param, midi_lm_param
         midi_lm = MIDILM(param=midi_lm_param, baby_param=baby_param, use_generator=use_generator)
-        midi_lm.load_state_dict(torch.load(model_path, map_location="cpu"))
+        midi_lm.load_from_torch_model(model_path)
         # 2) Provide a dummy config so PEFT doesn't crash
         #    model_type can be anything recognized, e.g. "gpt2" or "mpt"
         midi_lm.config = FakeConfig()
