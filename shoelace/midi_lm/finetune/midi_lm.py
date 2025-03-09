@@ -51,7 +51,7 @@ class MIDILMLora(nn.Module):
         for i in range(len(midi_lm.transformer_decoder.layers)):
             target_modules.append(f"transformer_decoder.layers.{i}.self_attn.out_proj")
         lora_config = LoraConfig(
-            task_type="midi_lm",
+            task_type="CAUSAL_LM",
             r=r,
             lora_alpha=lora_alpha,
             target_modules=target_modules,
