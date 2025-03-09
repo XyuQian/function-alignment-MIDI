@@ -196,7 +196,7 @@ class MIDILM(nn.Module):
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"])#, use_generator=use_generator
         self.baby_llm = BabyLLM(**baby_param)
 
-    def yield_forward(self, x, return_loss=True, return_memory=False, cut_x=True):
+    def yield_forward(self, x, return_loss=True, return_memory=False, cut_x=True, **kwargs):
         """
         Forward pass for MIDI language modeling.
         """
