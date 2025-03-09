@@ -1,6 +1,6 @@
 lr=1e-4
 exp=exp
-batch_size=20
+batch_size=24
 e=30
 exp_dir=midi_lm_piano_cover
 
