@@ -109,7 +109,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
 
         logging.info(f"Epoch {e} started.")
         for i, batch in enumerate(dl):
-            loss = model(**move_to_device(batch))
+            loss = model(**move_to_device(batch, device))
             grad, lr = trainer.step(loss, model.parameters())
             step += 1
 
