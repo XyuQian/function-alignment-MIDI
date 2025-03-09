@@ -134,5 +134,5 @@ if __name__ == "__main__":
     output_folder = "test_results/original"
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
-    model_path = f"exp/midi_lm/latest_{model_id}.pth"
+    model_path = f"exp/midi_lm_continue_phase_1/latest_{model_id}.pth"
     run_inference(model_path, output_folder)
