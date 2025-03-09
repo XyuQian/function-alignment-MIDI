@@ -43,6 +43,9 @@ def get_dataset(rid, batch_size, validation=False):
 
     return dataset, dataloader
 
+def move_to_device(batch):
+    for v in batch:
+        batch[v].to(device)
 
 @torch.no_grad()
 def evaluate(model, dataloader, e, i, device):
@@ -53,6 +56,7 @@ def evaluate(model, dataloader, e, i, device):
     logging.info("Starting evaluation...")
     dl = tqdm(dataloader, desc=f"Evaluate epoch {e} step {i}")
     for batch in dl:
+        move_to_device(batch)
         loss = model(**batch)
         total_loss += loss.item()
         num_batches += 1
@@ -105,6 +109,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
 
         logging.info(f"Epoch {e} started.")
         for i, batch in enumerate(dl):
+            move_to_device(batch)
             loss = model(**batch)
             grad, lr = trainer.step(loss, model.parameters())
             step += 1
