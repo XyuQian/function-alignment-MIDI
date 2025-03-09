@@ -264,7 +264,7 @@ class MIDILM(nn.Module):
         
 
     def forward(self, input_ids, **kwargs):
-        print(input_ids.shape)
+        print(input_ids.device, "----------------")
         generator = self.yield_forward(input_ids, **kwargs)
         return next(generator)
 
