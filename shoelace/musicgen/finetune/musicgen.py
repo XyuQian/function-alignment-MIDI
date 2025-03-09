@@ -65,6 +65,8 @@ class MusicGenLora(nn.Module):
         """
         return self.musicgen(x, **kwargs)
 
+    def inference(self, x, **kwargs):
+        pass
 
     def save_weights(self, path: str):
         """

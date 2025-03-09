@@ -45,10 +45,11 @@ class TransformerEncoderLayer(Module):
         self.norm2 = LayerNorm(d_model, eps=layer_norm_eps, bias=bias, **factory_kwargs)
         self.dropout1 = Dropout(dropout)
         self.dropout2 = Dropout(dropout)
-
+        
         if isinstance(activation, str):
             activation = _get_activation_fn(activation)
         self.activation = activation
+        
 
         self.use_generator = use_generator
 
@@ -59,14 +60,19 @@ class TransformerEncoderLayer(Module):
         """
         Forward pass with optional generator-based execution.
         """
+        
 
         x = src
+        # print(x[0, 0, 100:300])
+        # # print("-----------------------------------")
+        
         if self.norm_first:
             x = x + (yield from self._sa_block(
                 self.norm1(x), src_mask, src_key_padding_mask, is_causal=is_causal
             ))
             x = x + self._ff_block(self.norm2(x))
         else:
+            
             x = self.norm1(
                 x
                 + (yield from self._sa_block(x, src_mask, src_key_padding_mask, is_causal=is_causal
@@ -121,3 +127,40 @@ class TransformerEncoder(Module):
             output = self.norm(output)
 
         return output
+
+    def load_from_torch_model(self, state_dict):
+    
+        for i, layer in enumerate(self.layers):
+            prefix = f"layers.{i}."
+            # Extract parameters for the current layer
+            layer_state = {
+                k[len(prefix):]: v
+                for k, v in state_dict.items() if k.startswith(prefix)
+            }
+            # Process multi-head attention weights specially
+            if "self_attn.in_proj_weight" in layer_state:
+                in_proj_weight = layer_state.pop("self_attn.in_proj_weight")
+                d_model = layer.self_attn.embed_dim
+                # Split the fused weight into q, k, and v weights.
+                layer.self_attn.q_proj.weight.data.copy_(in_proj_weight[:d_model, :])
+                layer.self_attn.k_proj.weight.data.copy_(in_proj_weight[d_model:2 * d_model, :])
+                layer.self_attn.v_proj.weight.data.copy_(in_proj_weight[2 * d_model:3 * d_model, :])
+            if "self_attn.in_proj_bias" in layer_state:
+                in_proj_bias = layer_state.pop("self_attn.in_proj_bias")
+                d_model = layer.self_attn.embed_dim
+                layer.self_attn.q_proj.bias.data.copy_(in_proj_bias[:d_model])
+                layer.self_attn.k_proj.bias.data.copy_(in_proj_bias[d_model:2 * d_model])
+                layer.self_attn.v_proj.bias.data.copy_(in_proj_bias[2 * d_model:3 * d_model])
+            # Load out projection weights directly.
+            if "self_attn.out_proj.weight" in layer_state:
+                layer.self_attn.out_proj.weight.data.copy_(layer_state.pop("self_attn.out_proj.weight"))
+            if "self_attn.out_proj.bias" in layer_state:
+                layer.self_attn.out_proj.bias.data.copy_(layer_state.pop("self_attn.out_proj.bias"))
+            # Load remaining parameters (e.g. for linear layers and layer norms)
+            layer.load_state_dict(layer_state, strict=False)
+    
+        # Load the global normalization weights if present.
+        if self.norm is not None:
+            norm_state = {k[len("norm."):]: v for k, v in state_dict.items() if k.startswith("norm.")}
+            self.norm.load_state_dict(norm_state)
+

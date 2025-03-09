@@ -5,7 +5,7 @@ import numpy as np
 import pretty_midi
 from shoelace.datasets.preprocess_midi import load_midi, SEG_RES, RES_EVENT
 from shoelace.midi_lm.models.config import midi_lm_param, baby_param, PAD
-from shoelace.midi_lm.models.midi_lm import MIDILM
+from shoelace.midi_lm.test.midi_lm import MIDILM
 
 device = "cuda"
 SEQ_LEN = 1024
@@ -112,9 +112,10 @@ def save_midi_sequences(sequences, folder):
 def run_inference(model_path, output_folder):
     """Runs inference using a trained MIDI language model."""
     model = MIDILM(param=midi_lm_param, baby_param=baby_param)
-    model.load_from_torch_model(model_path)
+    model.load_state_dict(torch.load(model_path, map_location="cpu"), strict=False)
 
     model.to(device).eval()
+   
 
     input_seq, num_samples = get_test_data()
     input_seq = input_seq.to(device).long()
@@ -131,7 +132,7 @@ def run_inference(model_path, output_folder):
 
 
 if __name__ == "__main__":
-    output_folder = "test_results/original"
+    output_folder = "test_results/test"
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
     model_path = f"exp/midi_lm/latest_{model_id}.pth"

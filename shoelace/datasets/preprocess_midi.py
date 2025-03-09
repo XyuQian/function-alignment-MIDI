@@ -103,17 +103,17 @@ def load_midi(
         res_sos.append(cur_idx)
     res_events = [v for e in res_events for v in e]
 
-    if extract_melody:
-        melody_window_len, non_sil_idx = 3, next((i for i, v in enumerate(valid_melody_seg) if v), 0)
-        start_idx = -1
-        for i in range(non_sil_idx, len(valid_melody_seg)):
-            if valid_melody_seg[i]:
-                if start_idx >= 0 and i - start_idx <= melody_window_len:
-                    valid_melody_seg[start_idx: i] = True
-                start_idx = -1
-            else:
-                if start_idx < 0:
-                    start_idx = i
+    # if extract_melody:
+    #     melody_window_len, non_sil_idx = 3, next((i for i, v in enumerate(valid_melody_seg) if v), 0)
+    #     start_idx = -1
+    #     for i in range(non_sil_idx, len(valid_melody_seg)):
+    #         if valid_melody_seg[i]:
+    #             if start_idx >= 0 and i - start_idx <= melody_window_len:
+    #                 valid_melody_seg[start_idx: i] = True
+    #             start_idx = -1
+    #         else:
+    #             if start_idx < 0:
+    #                 start_idx = i
 
     results = {
         "events": np.asarray(events),

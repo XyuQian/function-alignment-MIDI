@@ -54,7 +54,8 @@ class AudioDataset(Dataset):
                  is_mono: bool = True,
                  num_workers: int = 1,
                  use_loader: bool = True,
-                 validation: bool = False):
+                 validation: bool = False,
+                 vocals_only: bool = False):
         """
         Args:
             path_folder (str): Root folder containing 'pop909' data (text & feature).

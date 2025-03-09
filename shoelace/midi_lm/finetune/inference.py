@@ -5,10 +5,10 @@ import numpy as np
 import pretty_midi
 from shoelace.datasets.preprocess_midi import load_midi, SEG_RES, RES_EVENT
 from shoelace.midi_lm.models.config import midi_lm_param, baby_param, PAD
-from shoelace.midi_lm.models.midi_lm import MIDILM
+from shoelace.midi_lm.finetune.midi_lm import MIDILMLora
 
 device = "cuda"
-SEQ_LEN = 1024
+SEQ_LEN = 512
 
 
 def get_test_data():
@@ -17,14 +17,12 @@ def get_test_data():
         "data/POP909/909/909.mid",
         "data/POP909/803/803.mid",
         "data/POP909/860/860.mid",
-        "data/POP909/757/757.mid",
-        "data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA/MIDIs/f/f370a190b7901932cae04037e29ef6cf.mid",
-        "data/rwc/RM-P001.SMF_SYNC.MID"
+        "data/POP909/757/757.mid"
     ]
     sequences = []
 
     for path in paths:
-        results = load_midi(path, extract_melody=False, return_onset=True)
+        results = load_midi(path, extract_melody=True, return_onset=True)
         if results is None:
             continue
         events = results["events"]
@@ -70,7 +68,7 @@ def decode(path, events, res=50):
         cur_idx += 1
     while cur_idx < len(events):
         if events[cur_idx][0] in [PAD, RES_EVENT]:
-            # print(cur_idx, events[cur_idx], RES_EVENT, PAD)
+            print(cur_idx, events[cur_idx], RES_EVENT, PAD)
             break
         if events[cur_idx][0] < SEG_RES:
             add_notes(events[cur_idx], start_pos, instruments)
@@ -111,8 +109,8 @@ def save_midi_sequences(sequences, folder):
 
 def run_inference(model_path, output_folder):
     """Runs inference using a trained MIDI language model."""
-    model = MIDILM(param=midi_lm_param, baby_param=baby_param)
-    model.load_from_torch_model(model_path)
+    model = MIDILMLora(model_path="save_models/midi_lm_0309.pth")
+    model.load_weights(model_path)
 
     model.to(device).eval()
 
@@ -131,8 +129,8 @@ def run_inference(model_path, output_folder):
 
 
 if __name__ == "__main__":
-    output_folder = "test_results/original"
+    output_folder = "test_results"
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
-    model_path = f"exp/midi_lm/latest_{model_id}.pth"
+    model_path = f"exp/midi_lm_piano_cover/latest_{model_id}"
     run_inference(model_path, output_folder)

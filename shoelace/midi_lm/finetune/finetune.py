@@ -74,10 +74,10 @@ def evaluate(model, dataloader, e, i, device):
 def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_loss):
     with torch.no_grad():
         writer.add_scalar('train/mean_loss', mean_loss, step)
-        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}.pth"))
+        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_{i}"))
         if eval_loss < min_loss:
             min_loss = eval_loss
-            model.module.save_weights(os.path.join(model_dir, f"best.pth"))
+            model.module.save_weights(os.path.join(model_dir, f"best"))
             logging.info(f"Best checkpoint Epoch {e}, Step {i}: min Loss: {min_loss:.4f}")
 
         writer.add_scalar("eval/loss", eval_loss, step)
@@ -158,7 +158,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     logging.info(f"Initializing process group for replica {replica_id}/{replica_count}")
 
-    model = Model()
+    model = Model(model_path="save_models/midi_lm_0309.pth")
     model = model.to(device)
     model = DDP(model, [replica_id])
 

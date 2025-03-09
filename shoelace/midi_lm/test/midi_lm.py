@@ -1,8 +1,8 @@
 from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
-# from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
+from torch.nn import TransformerEncoder, TransformerEncoderLayer
+# from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
     N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES
 
@@ -212,60 +212,24 @@ class MIDILM(nn.Module):
 
         src_padding_mask = x[:, :, 0] == PAD if cut_x else None
 
-        decoder_output = yield from  self.transformer_decoder(embed_x_with_pos,
+        decoder_output = self.transformer_decoder(embed_x_with_pos, 
                                                              src_key_padding_mask=src_padding_mask,
-                                                             is_causal=True,
+                                                             is_causal=False,
                                                              mask=attn_mask)
         
         if return_memory:
-            yield decoder_output
+            return decoder_output
 
         memory = decoder_output.flatten(0, 1)[:, None]
         baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS).flatten(0, 1)
         outputs = self.baby_llm(tgt=baby_input_x, memory=memory)
         if return_loss:
-            yield nn.CrossEntropyLoss(ignore_index=PAD)(outputs.flatten(0, 1), x.flatten())
-        yield outputs
-
-    def load_from_torch_model(self, path: str):
-        """
-        Loads weights from a checkpoint into the MIDILM model.
-        
-        The checkpoint is expected to contain keys with prefixes:
-        - "baby_llm." for baby_llm,
-        - "transformer_decoder." for transformer_decoder,
-        - "input_embedding." for input_embedding.
-        """
-        # Load the checkpoint on CPU.
-        state_dict = torch.load(path, map_location="cpu")
-        
-        # Extract and load baby_llm weights.
-        baby_llm_state = {k[len("baby_llm."):]: v for k, v in state_dict.items() if k.startswith("baby_llm.")}
-        if not baby_llm_state:
-            raise KeyError("Checkpoint does not contain 'baby_llm' weights.")
-        self.baby_llm.load_state_dict(baby_llm_state)
-        
-        # Extract and load transformer_decoder weights.
-        transformer_decoder_state = {k[len("transformer_decoder."):]: v for k, v in state_dict.items() if k.startswith("transformer_decoder.")}
-        if not transformer_decoder_state:
-            raise KeyError("Checkpoint does not contain 'transformer_decoder' weights.")
-        self.transformer_decoder.load_from_torch_model(transformer_decoder_state)
-        
-        # Extract and load input_embedding weights.
-        input_embedding_state = {k[len("input_embedding."):]: v for k, v in state_dict.items() if k.startswith("input_embedding.")}
-        if not input_embedding_state:
-            raise KeyError("Checkpoint does not contain 'input_embedding' weights.")
-        self.input_embedding.load_state_dict(input_embedding_state)
-        
-        print(f"Successfully loaded weights from {path}")
-
-
-
-        
+            return nn.CrossEntropyLoss(ignore_index=PAD)(outputs.flatten(0, 1), x.flatten())
+        return outputs
 
     def forward(self, x, **kwargs):
-        generator = self.yield_forward(x, **kwargs)
-        return next(generator)
+       return self.yield_forward(x, **kwargs)
+        
 
     @torch.no_grad()
     def inference(self, x, max_len=512, top_k=32, temperature=1.0):

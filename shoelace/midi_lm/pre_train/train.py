@@ -14,7 +14,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from tqdm import tqdm
 from shoelace.midi_lm.pre_train.data_loader import MIDIDataset as Dataset
 from shoelace.midi_lm.pre_train.data_loader import collate_fn, worker_init_fn
-from shoelace.midi_lm.models.midi_lm import MIDILM as Model
+from shoelace.midi_lm.test.midi_lm import MIDILM as Model
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -88,7 +88,7 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
 
 def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, epochs):
     num_steps = len(dataloader)
-    rng = np.random.RandomState(456 + rank * 100)
+    rng = np.random.RandomState(912 + rank * 100)
     if rank == 0:
         writer = SummaryWriter(model_dir, flush_secs=20)
 
@@ -108,7 +108,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
         model.train()
 
         dl = tqdm(dataloader, desc=f"Epoch {e}") if rank == 0 else dataloader
-        r = rng.randint(0, 912)
+        r = rng.randint(0, 162)
         dataset.reset_random_seed(r, e)
 
         logging.info(f"Epoch {e} started.")
@@ -154,7 +154,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     from shoelace.midi_lm.models.config import midi_lm_param, baby_param
     model = Model(param=midi_lm_param, baby_param=baby_param)
-    model.load_state_dict(torch.load("exp/midi_lm_continue/start_0_3000.pth", map_location="cpu"), strict=False)
+    model.load_state_dict(torch.load("exp/midi_lm/latest_1_9000.pth", map_location="cpu"), strict=False)
     model = model.to(device)
     model = DDP(model, [replica_id])
 

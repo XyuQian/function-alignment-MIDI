@@ -4,7 +4,9 @@ import h5py
 import torch
 from tqdm import tqdm
 from torch.utils.data import Dataset as BaseDataset, get_worker_info
-from shoelace.midi_lm.models.config import PAD, MAX_SEQ_LEN
+from shoelace.midi_lm.models.config import PAD
+
+MAX_SEQ_LEN = 1024
 
 
 def load_data_lst(path_folder, validation):
@@ -14,7 +16,7 @@ def load_data_lst(path_folder, validation):
     list_folder = os.path.join(path_folder, "pop909", "text")
     feature_folder = os.path.join(path_folder, "pop909", "feature")
     if validation:
-        list_folder = list_folder + "_val"
+        list_folder = list_folder + "_eval"
     files, feature_paths = [], []
 
     for f in os.listdir(list_folder):
@@ -44,7 +46,7 @@ class MIDIDataset(BaseDataset):
         self.index = {str(i): [] for i in range(num_workers)}
         self.tlen = [[] for _ in range(len(self.feature_paths))]
 
-        self._prepare_dataset(num_workers, step=5 if not validation else 15)
+        self._prepare_dataset(num_workers, step=1 if not validation else 2)
         self.data = [None for _ in self.feature_paths]
 
         print("Number of files:", sum(len(f) for f in self.files))
@@ -78,7 +80,7 @@ class MIDIDataset(BaseDataset):
                         res_ed = res_sos_indices[s + 1] if s + 1 < len(res_sos_indices) else -1
 
                         self.index[str(i % num_workers)].append([i, j, sid, res_st, res_ed])
-                        if self.tlen[i][j] - sid < MAX_SEQ_LEN:
+                        if self.tlen[i][j] - sid < MAX_SEQ_LEN // 2:
                             break
 
         self.f_len = sum(len(self.index[i]) for i in self.index)

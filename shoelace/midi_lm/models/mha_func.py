@@ -29,7 +29,7 @@ def multi_head_attention_forward(
     head_dim = embed_dim // num_heads
     assert head_dim * num_heads == embed_dim, "embed_dim must be divisible by num_heads"
 
-    if not training:
+    if not training:        
         dropout_p = 0.0
     q = q_proj(query)
     k = k_proj(key)

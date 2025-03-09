@@ -67,7 +67,7 @@ class MultiheadAttention(Module):
         """
         Computes multi-head attention using scaled dot-product attention.
         """
-
+        
         attn_output = yield from multi_head_attention_forward(
             query,
             query,

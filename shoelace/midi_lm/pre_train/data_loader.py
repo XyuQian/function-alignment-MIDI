@@ -79,7 +79,7 @@ class MIDIDataset(BaseDataset):
                         res_ed = res_sos_indices[s + 1] if s + 1 < len(res_sos_indices) else -1
 
                         self.index[str(i % num_workers)].append([i, j, sid, res_st, res_ed])
-                        if self.tlen[i][j] - sid < MAX_SEQ_LEN:
+                        if self.tlen[i][j] - sid < MAX_SEQ_LEN // 2:
                             break
 
         self.f_len = sum(len(self.index[i]) for i in self.index)
@@ -123,7 +123,7 @@ def worker_init_fn(worker_id):
 def collate_fn(batch):
     """Collate function to pad sequences."""
     max_len = max(len(x) for x in batch)
-
+    # print([len(x) for x in batch])
     seq = [
         np.pad(x, ((0, max_len - len(x)), (0, 0)), "constant", constant_values=(PAD, PAD))
         if len(x) < max_len else x

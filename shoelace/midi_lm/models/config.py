@@ -8,7 +8,7 @@ N_PITCH = 132
 N_DUR_X = 132
 N_DUR_Y = 132
 N_VELOCITY = 132
-MAX_SEQ_LEN = 768
+MAX_SEQ_LEN = 1500
 
 midi_lm_param = {
     "embedding_dim": 1024,
