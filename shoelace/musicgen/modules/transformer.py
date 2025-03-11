@@ -74,7 +74,7 @@ class BasicMultiheadAttention(nn.Module):
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
 
-    def set_use_generator(flag : bool):
+    def set_use_generator(self, flag : bool):
         self.use_generator = flag
         
     def init_qkv(self):
@@ -328,7 +328,7 @@ class Transformer(nn.Module):
         for layer in self.layers:
             layer.init_qkv()
 
-    def set_use_generator(flag : bool):
+    def set_use_generator(self, flag : bool):
         self.use_generator = flag
         for layer in self.layers:
             self.layer.set_use_generator(flag)

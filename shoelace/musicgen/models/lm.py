@@ -169,7 +169,7 @@ class LMModel(nn.Module):
     def init_qkv(self):
         self.transformer.init_qkv()
 
-    def set_use_generator(flag : bool):
+    def set_use_generator(self, flag : bool):
         self.use_generator = flag
         self.transformer.set_use_generator(flag)
 
