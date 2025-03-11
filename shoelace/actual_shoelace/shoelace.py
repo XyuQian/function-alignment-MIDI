@@ -170,9 +170,11 @@ class Shoelace(nn.Module):
 
 if __name__=="__main__":
     from shoelace.actual_shoelace.config import MODEL_FACTORY
-    model = Shoelace(model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
-    midi_seq = torch.ones([2, 20, 6])
-    audio_seq = torch.ones([2, 100, 4])
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = Shoelace(model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"]).to(device)
+    midi_seq = torch.ones([2, 20, 6]).to(device)
+    audio_seq = torch.ones([2, 100, 4]).to(device)
     batch = {
         "AudioLM":
             {"input_ids": midi_seq},
