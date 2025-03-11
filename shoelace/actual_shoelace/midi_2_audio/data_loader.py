@@ -5,6 +5,7 @@ import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
 from shoelace.musicgen.finetune.config import MAX_DUR, FRAME_RATE
+from shoelace.midi_lm.models.config import SEG_RES
 
 TOL_WIN = 2
 
