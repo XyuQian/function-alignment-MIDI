@@ -136,7 +136,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
             #                           model_dir, step, e, i, min_loss)
 
         logging.info(f"Epoch {e} finished. Saving model...")
-        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
+        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end"))
 
         eval_loss = evaluate(model, val_dataloader, e, "end", device)
         if rank == 0:
@@ -153,7 +153,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     logging.info(f"Initializing process group for replica {replica_id}/{replica_count}")
 
-    from shoelace.midi_lm.models.config import midi_lm_param, baby_param
+    
     model = Model(device=device, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
     model = model.to(device)
     model = DDP(model, [replica_id])

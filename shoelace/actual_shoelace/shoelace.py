@@ -185,7 +185,7 @@ class Shoelace(nn.Module):
         Saves only LoRA-related parameters.
         """
         state = self.state_dict()
-        os.makedirs(path, exist_ok=True)
+        os.makedirs(model_folder, exist_ok=True)
         for key in list(state.keys()):
             if not str.startswith(key, "adapters"):
                 state.pop(key)
