@@ -176,8 +176,8 @@ if __name__=="__main__":
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = Shoelace(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"]).to(device)
-    midi_seq = torch.ones([2, 20, 6]).to(device)
-    audio_seq = torch.ones([2, 100, 4]).to(device)
+    midi_seq = torch.ones([2, 20, 6]).to(device).long()
+    audio_seq = torch.ones([2, 100, 4]).to(device).long()
     batch = {
         "AudioLM":
             {"input_ids": midi_seq},
