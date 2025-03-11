@@ -191,7 +191,7 @@ def collate_fn(batch):
     min_len = min(len(x[1]) for x in batch)
     midi_seq = [
         x[1][:min_len]
-        for x[1] in batch
+        for x in batch
     ]
     midi_data = torch.from_numpy(np.stack(midi_seq, axis=0)).long()
 
