@@ -77,12 +77,7 @@ class LowRankMultiheadAttention(nn.Module):
 
         # key = self.k_linear(kv_x) + self.k_pos_linear(kv_pos)
         # value = self.v_linear(kv_x)
-
-
-
-        return {
-            "attn_output": attn_output * self.gate + vanilla_attn_output
-        }
+        return attn_output * self.gate + vanilla_attn_output
 
     def compute_attention(self, q, key, value, attn_mask):
         batch_size, kv_len = key.shape[0], key.shape[1]

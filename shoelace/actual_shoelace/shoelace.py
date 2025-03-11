@@ -156,12 +156,12 @@ class Shoelace(nn.Module):
                 hidden_b = next(gen_dict[self.model_dict[1]["name"]])
 
             if i % layer_skips[0] == 0 and self.model_dict[0]["adapter"] is not None:
-                adapt_output_a = self.model_dict[0]["adapter"](hidden_a, hidden_b, i // layer_skips[0])
+                adapt_output_a = self.model_dict[0]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0])
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 hidden_a[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[1] == 0 and self.bi_direction and self.model_dict[1]["adapter"] is not None:
-                adapt_output_b = self.model_dict[1]["adapter"](hidden_b, hidden_a, i // layer_skips[1])
+                adapt_output_b = self.model_dict[1]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1])
                 hidden_b[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
