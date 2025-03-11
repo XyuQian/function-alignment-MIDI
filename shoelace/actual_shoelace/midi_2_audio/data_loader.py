@@ -7,7 +7,7 @@ from tqdm import tqdm
 from shoelace.musicgen.finetune.config import MAX_DUR, FRAME_RATE
 from shoelace.midi_lm.models.config import SEG_RES, PAD
 
-TOL_WIN = 2
+TOL_WIN = 3
 
 def load_data_lst(path_folder: str, validation: bool):
     """
@@ -188,13 +188,11 @@ def collate_fn(batch):
 
     arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
 
-    max_len = max(len(x[1]) for x in batch)
+    min_len = min(len(x[1]) for x in batch)
     midi_seq = [
-        np.pad(x, ((0, max_len - len(x[1])), (0, 0)), "constant", constant_values=(PAD, PAD))
-        if len(x[1]) < max_len else x[1]
+        x[1][:min_len]
         for x[1] in batch
     ]
-
     midi_data = torch.from_numpy(np.stack(midi_seq, axis=0)).long()
 
     return {
