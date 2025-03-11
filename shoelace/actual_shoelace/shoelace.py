@@ -154,17 +154,19 @@ class Shoelace(nn.Module):
                 hidden_a = next(gen_dict[self.model_dict[0]["name"]])
             if i % layer_skips[1] == 0:
                 hidden_b = next(gen_dict[self.model_dict[1]["name"]])
+
+            if i == 0:
+                seq_len_a, seq_len_b, device = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1], hidden_a[0]["query"].shape[1].device
+                
             
             if i % layer_skips[0] == 0 and self.model_dict[0]["adapter"]:
-                seq_len_a, seq_len_b = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1]
-                mask, _ = create_mask(seq_len_a, seq_len_b)
+                mask, _ = create_mask(seq_len_a, seq_len_b, device)
                 adapt_output_a = self.model_dict[0]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0], mask)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 hidden_a[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[1] == 0 and self.bi_direction and self.model_dict[1]["adapter"]:
-                seq_len_a, seq_len_b = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1]
-                mask, _ = create_mask(seq_len_b, seq_len_a)
+                mask, _ = create_mask(seq_len_b, seq_len_a, device)
                 adapt_output_b = self.model_dict[1]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1], mask)
                 hidden_b[0]["attn_output"] = adapt_output_b
 
