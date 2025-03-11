@@ -132,5 +132,5 @@ if __name__ == "__main__":
     output_folder = "test_results"
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
-    model_path = f"save_model/midi_lm_piano_cover"
+    model_path = f"save_models/midi_lm_piano_cover"
     run_inference(model_path, output_folder)

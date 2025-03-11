@@ -194,7 +194,6 @@ class Shoelace(nn.Module):
             model_name = model_info["name"]
             model = model_info["model"]
             weights_folder = os.path.join(model_folder, model_name)
-            os.makedirs(weights_folder, exist_ok=True)
             model.save_weights(weights_folder)
 
         print(f"Weights saved to: {model_folder}")
