@@ -14,7 +14,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "false"
 from tqdm import tqdm
 from shoelace.actual_shoelace.midi_2_audio.data_loader import ShoelaceDataset as Dataset
 from shoelace.actual_shoelace.midi_2_audio.data_loader import collate_fn, worker_init_fn
-from shoelace.actual_shoelace.shoelace import shoelace as Model
+from shoelace.actual_shoelace.shoelace import Shoelace as Model
 from shoelace.actual_shoelace.midi_2_audio.config import MODEL_FACTORY
 
 # Configure logging
