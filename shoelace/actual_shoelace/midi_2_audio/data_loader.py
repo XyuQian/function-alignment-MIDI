@@ -94,7 +94,7 @@ class ShoelaceDataset(Dataset):
                     total_len = audio_len - MAX_DUR
                     sos_indices = hf[fname + ".sos"][:]
                     res_sos_indices = hf[fname + ".res_sos"][:]
-                    
+                    min_len = min(len(sos_indices), len(res_sos_indices))
                     print(sos_indices.shape, res_sos_indices.shape)
                     # Step in increments of 50
                     for start_idx in range(0, total_len, SEG_RES):
@@ -106,7 +106,7 @@ class ShoelaceDataset(Dataset):
                         
                         start_pos = start_idx//SEG_RES
                         end_pos = (start_idx + MAX_DUR) // SEG_RES + TOL_WIN
-                        end_pos = len(sos_indices) - 1 if end_pos >= len(sos_indices) else end_pos
+                        end_pos = min_len - 1 if end_pos >= min_len else end_pos
                         midi_st = sos_indices[start_pos]
                         midi_ed = sos_indices[end_pos]
 
