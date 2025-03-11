@@ -180,9 +180,9 @@ if __name__=="__main__":
     audio_seq = torch.ones([2, 4, 100]).to(device).long()
     batch = {
         "AudioLM":
-            {"input_ids": midi_seq},
+            {"input_ids": audio_seq},
         "MIDILM":
-            {"input_ids": audio_seq}
+            {"input_ids": midi_seq}
     }
     out = model(batch)
     print(out)
