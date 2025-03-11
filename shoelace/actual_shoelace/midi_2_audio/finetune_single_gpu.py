@@ -45,8 +45,7 @@ def get_dataset(rid, batch_size, validation=False):
     return dataset, dataloader
 
 def move_to_device(batch, dev):
-    return 
-        {k : {v: batch[k][v].to(dev) for v in batch[k]} for k in batch}
+    return {k : {v: batch[k][v].to(dev) for v in batch[k]} for k in batch}
     
 
 @torch.no_grad()
