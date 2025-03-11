@@ -193,7 +193,7 @@ class MIDILM(nn.Module):
                                               embedding_dim=embedding_dim)
         self.pos_encoding = PositionalEncoding(d_model=embedding_dim)
         decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True)
-        self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"])#, use_generator=use_generator
+        self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"], use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
 
     def yield_forward(self, x, return_loss=True, return_memory=False, cut_x=True, **kwargs):
@@ -212,7 +212,7 @@ class MIDILM(nn.Module):
 
         src_padding_mask = x[:, :, 0] == PAD if cut_x else None
 
-        decoder_output = yield from  self.transformer_decoder(embed_x_with_pos,
+        decoder_output = yield from self.transformer_decoder(embed_x_with_pos,
                                                              src_key_padding_mask=src_padding_mask,
                                                              is_causal=True,
                                                              mask=attn_mask)
