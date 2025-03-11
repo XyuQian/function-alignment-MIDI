@@ -148,15 +148,15 @@ class ShoelaceDataset(Dataset):
                 self.cache_data[fname] = {
                     "audio": hf[fname + ".audio"][:],
                     "events": hf[fname + ".events"][:],
-                    "res_events": hf[fname + ".res_events"]
+                    "res_events": hf[fname + ".res_events"][:]
                 }
 
         audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + MAX_DUR]
         midi_segment = self.cache_data[fname]["events"][midi_st : midi_ed]
 
-        # if midi_prefix_ed > midi_prefix_st:
-        #     prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]
-        #     midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
+        if midi_prefix_ed > midi_prefix_st:
+            prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]
+            midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
         midi_segment[midi_segment < 0] = PAD
 
         return audio_segment, midi_segment
