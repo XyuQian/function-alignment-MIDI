@@ -156,7 +156,7 @@ class Shoelace(nn.Module):
                 hidden_b = next(gen_dict[self.model_dict[1]["name"]])
 
             if i == 0:
-                seq_len_a, seq_len_b, device = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1], hidden_a[0]["query"].shape[1].device
+                seq_len_a, seq_len_b, device = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
                 
             
             if i % layer_skips[0] == 0 and self.model_dict[0]["adapter"]:
