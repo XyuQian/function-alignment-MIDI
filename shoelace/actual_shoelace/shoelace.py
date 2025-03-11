@@ -177,7 +177,7 @@ class Shoelace(nn.Module):
             primary_name = self.model_dict[0]["name"]
             loss = {primary_name: next(gen_dict[primary_name])}
 
-        return loss
+        return sum([loss[k] for k in loss])
 
 if __name__=="__main__":
     from shoelace.actual_shoelace.config import MODEL_FACTORY

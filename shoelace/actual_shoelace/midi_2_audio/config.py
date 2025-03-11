@@ -36,6 +36,6 @@ MODEL_FACTORY = {
         "num_heads": 8,
         "steps": 1,
         "seq_len": 0,
-        "checkpoint_path": None
+        "checkpoint_path": "save_models/midi_lm_piano_cover"
     },
 }
