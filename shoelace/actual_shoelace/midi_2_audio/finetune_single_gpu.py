@@ -143,7 +143,7 @@ def main(args):
 
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
-    model = Model(device=device, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+    model = Model(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
     dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,
