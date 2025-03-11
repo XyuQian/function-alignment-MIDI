@@ -5,10 +5,10 @@ e=30
 w=1
 exp_dir=midi_2_audio
 
-CUDA_VISIBLE_DEVICES=0 python -m shoelace.actual_shoelace.midi_2_audio.finetune \
+CUDA_VISIBLE_DEVICES=0 python -m shoelace.actual_shoelace.midi_2_audio.finetune_single_gpu \
       --learning_rate=$lr \
       --experiment_folder=$exp \
       --batch_size=$batch_size \
       --epoch=$e \
-      --world_size=$w \
+      # --world_size=$w \
       --exp_name=$exp_dir
