@@ -110,6 +110,8 @@ class TransformerEncoder(Module):
         self.num_layers = num_layers
         self.norm = norm
         self.use_generator = use_generator
+        
+
 
     def forward(self, src, mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,
                 is_causal: Optional[bool] = None):

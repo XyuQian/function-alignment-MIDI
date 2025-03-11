@@ -192,7 +192,7 @@ class MIDILM(nn.Module):
         self.input_embedding = InputEmbedding(n_words=[N_ONSET, N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY],
                                               embedding_dim=embedding_dim)
         self.pos_encoding = PositionalEncoding(d_model=embedding_dim)
-        decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True)
+        decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True, use_generator=use_generator)
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"], use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
 
