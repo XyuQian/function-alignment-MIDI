@@ -31,20 +31,20 @@ class PositionalEncoding(nn.Module):
 
 
 class LowRankMultiheadAttention(nn.Module):
-    def __init__(self, in_dim: int, embed_dim: int, num_heads: int, low_rank_dim: int = 64, dropout: float = 0.0):
+    def __init__(self, in_dim: int, out_dim: int, num_heads: int, low_rank_dim: int = 64, dropout: float = 0.1):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = embed_dim // num_heads
         self.embed_dim = embed_dim
         self.dropout = nn.Dropout(dropout)
 
-        self.k_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, embed_dim)
-        self.v_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, embed_dim)
-        self.q_pos_linear = self._create_low_rank_mlp(embed_dim, low_rank_dim, embed_dim)
-        self.k_pos_linear = self._create_low_rank_mlp(embed_dim, low_rank_dim, embed_dim)
+        self.k_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
+        self.v_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
+        self.q_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
+        self.k_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
 
         self.prompt = nn.Parameter(torch.randn(1, 1, in_dim), requires_grad=True)
-        self.gates = nn.Parameter(torch.zeros(1), requires_grad=True)
+        self.gate = nn.Parameter(torch.zeros(1), requires_grad=True)
         self.pos_encoding = PositionalEncoding(d_model=embed_dim)
 
     @staticmethod
@@ -54,16 +54,35 @@ class LowRankMultiheadAttention(nn.Module):
             nn.Linear(low_rank_dim, out_dim, bias=False)
         )
 
-    def forward(self, q: torch.Tensor, kv_x: torch.Tensor, pos_a=None, pos_b=None, mask=None):
-        q_len, kv_len = q.shape[2], kv_x.shape[1]
-        q = q.transpose(1, 2).reshape(q.shape[0], q_len, -1) + self.q_pos_linear(self.pos_encoding(q_len, pos_a))
-        kv_x = torch.cat([self.prompt.repeat(len(kv_x), 1, 1), kv_x], dim=1)
-        kv_pos = F.pad(self.pos_encoding(kv_len, pos_b), (0, 0, 1, 0))
+    def forward(self, hidden_a, hidden_b, attn_mask):
+        vanilla_attn_output = hidden_a["attn_output"]
 
-        key = self.k_linear(kv_x) + self.k_pos_linear(kv_pos)
+        q = hidden_a["q"]
+
+        kv_x = hidden_b["query"]
+
+        print(q.shape, kv_x.shape)
+
+        q_len, kv_len = q.shape[2], kv_x.shape[1]
+
+        key = self.k_linear(kv_x)
         value = self.v_linear(kv_x)
 
-        return self.compute_attention(q, key, value, mask) * self.gates
+        attn_output = self.compute_attention(q, key, value, attn_mask)
+
+
+        # q = q.transpose(1, 2).reshape(q.shape[0], q_len, -1) + self.q_pos_linear(self.pos_encoding(q_len, pos_a))
+        # kv_x = torch.cat([self.prompt.repeat(len(kv_x), 1, 1), kv_x], dim=1)
+        # kv_pos = F.pad(self.pos_encoding(kv_len, pos_b), (0, 0, 1, 0))
+
+        # key = self.k_linear(kv_x) + self.k_pos_linear(kv_pos)
+        # value = self.v_linear(kv_x)
+
+
+
+        return {
+            "attn_output": attn_output * self.gate + vanilla_attn_output
+        }
 
     def compute_attention(self, q, key, value, attn_mask):
         batch_size, kv_len = key.shape[0], key.shape[1]
@@ -80,17 +99,12 @@ class LowRankMultiheadAttention(nn.Module):
 
 
 class SholaceParam(nn.Module):
-    def __init__(self, n_layers=48, a_embed_dim=2048, b_embed_dim=1024, num_heads=32,
-                 low_rank_dim=64, ):
+    def __init__(self, n_layers, in_dim, out_dim, num_heads,
+                 low_rank_dim):
         super().__init__()
         self.cross_attn = nn.ModuleList([
-            LowRankMultiheadAttention(b_embed_dim, a_embed_dim, num_heads, low_rank_dim)
+            LowRankMultiheadAttention(in_dim, out_dim, num_heads, low_rank_dim)
             for _ in range(n_layers)])
 
-    def set_config(self, device):
-        for layer in self.cross_attn:
-            layer.set_config(device)
-
-    def forward(self):
-        for layer in self.cross_attn:
-            yield layer
+    def forward(self, hidden_a, hidden_b, layer_idx, attn_mask):
+        return self.cross_attn[layer_idx](hidden_a, hidden_b, attn_mask)
