@@ -331,7 +331,7 @@ class Transformer(nn.Module):
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
         for layer in self.layers:
-            self.layer.set_use_generator(flag)
+            layer.set_use_generator(flag)
 
     def _apply_layer(
         self,
