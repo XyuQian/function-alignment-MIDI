@@ -82,7 +82,8 @@ class Shoelace(nn.Module):
 
         # Initialize models and load weights.
         for key, config in model_configs.items():
-            config["kwargs"]["device"] = device
+            if device in config["kwargs"]:
+                config["kwargs"].update("device", device)
             model_instance = config["model"](use_generator=True, **config["kwargs"])
             if config["checkpoint_path"]:
                 model_instance.load_weights(config["checkpoint_path"])
