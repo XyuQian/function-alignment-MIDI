@@ -5,7 +5,7 @@ import torch.nn.functional as F
 
 # Assuming these are imported from your own library or files
 from shoelace.utils.network_utils import freeze, print_params
-from .cross_attention import LowRankMultiheadAttention
+from .cross_attention import SholaceParam
 
 
 def create_mask(a_len: int, b_len: int, device: torch.device, mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
@@ -97,7 +97,7 @@ class Shoelace(nn.Module):
 
         # Create cross-attention adapters.
         # Adapter for model_names[0]: uses embeddings from model_names[1].
-        adapter_a = LowRankMultiheadAttention(
+        adapter_a = SholaceParam(
             n_layers=model_configs[model_names[0]]["n_layers"],
             in_dim=model_configs[model_names[1]]["emb_dim"],
             low_rank_dim=model_configs[model_names[0]]["low_rank_dim"],
