@@ -55,7 +55,7 @@ class MusicGen(nn.Module):
         pass
 
     def yield_forward(self, input_ids, with_preprocess=True,
-                      with_postprocess=True, return_loss=True):
+                      with_postprocess=True, return_loss=True, **kwargs):
         lm = self.lm
         x = preprocess(input_ids) if with_preprocess else input_ids
 

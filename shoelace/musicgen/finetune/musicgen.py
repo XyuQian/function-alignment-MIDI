@@ -47,7 +47,7 @@ class MusicGenLora(nn.Module):
             "self_attn.out_proj",
         ]
         lora_config = LoraConfig(
-            task_type="musicgen",
+            task_type="CAUSAL_LM",
             r=r,
             lora_alpha=lora_alpha,
             target_modules=target_modules,
@@ -58,12 +58,12 @@ class MusicGenLora(nn.Module):
         self.musicgen = get_peft_model(musicgen, lora_config)
         print_params(self)
 
-    def forward(self, x, **kwargs):
+    def forward(self, input_ids, **kwargs):
         """
         Forward pass for the LoRA-wrapped model.
         Adjust as needed for your LM signature.
         """
-        return self.musicgen(x, **kwargs)
+        return self.musicgen(input_ids, **kwargs)
 
     def inference(self, x, **kwargs):
         pass

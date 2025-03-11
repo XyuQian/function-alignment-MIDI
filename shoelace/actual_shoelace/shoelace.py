@@ -167,3 +167,18 @@ class Shoelace(nn.Module):
             loss = {primary_name: next(gen_dict[primary_name])}
 
         return loss
+
+if __name__=="__main__":
+    from shoelace.actual_shoelace.config import MODEL_FACTORY
+    model = Shoelace(model_config=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+    midi_seq = torch.ones([2, 20, 6])
+    audio_seq = torch.ones([2, 100, 4])
+    batch = {
+        "AudioLM":
+            {"input_ids": midi_seq},
+        "MIDILM":
+            {"input_ids": audio_seq}
+    }
+    out = model(batch)
+    print(out)
+
