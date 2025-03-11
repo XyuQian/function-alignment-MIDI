@@ -26,7 +26,8 @@ MODEL_FACTORY = {
         "n_layers": 48,
         "kwargs": {
             "r": 8,
-            "lora_alpha": 16
+            "lora_alpha": 16,
+            "model_path": "save_models/midi_lm.pth"
         },
         "n_layers": 12,
         "low_rank_dim": 64,
