@@ -95,7 +95,7 @@ class ShoelaceDataset(Dataset):
                     sos_indices = hf[fname + ".sos"][:]
                     res_sos_indices = hf[fname + ".res_sos"][:]
                     min_len = min(len(sos_indices), len(res_sos_indices))
-                    print(sos_indices.shape, res_sos_indices.shape)
+
                     # Step in increments of 50
                     for start_idx in range(0, total_len, SEG_RES):
                         # Worker assignment
@@ -154,9 +154,9 @@ class ShoelaceDataset(Dataset):
         audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + MAX_DUR]
         midi_segment = self.cache_data[fname]["events"][midi_st : midi_ed]
 
-        if midi_prefix_ed > midi_prefix_st:
-            prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]
-            midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
+        # if midi_prefix_ed > midi_prefix_st:
+        #     prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]
+        #     midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
         midi_segment[midi_segment < 0] = PAD
 
         return audio_segment, midi_segment
