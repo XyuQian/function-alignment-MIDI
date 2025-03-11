@@ -1,5 +1,5 @@
 
-from shoelace.musicgen.finetune.finetune.musicgen import MusicGenLora
+from shoelace.musicgen.finetune.musicgen import MusicGenLora
 from shoelace.midi_lm.finetune.midi_lm import MIDILMLora
 
 MODEL_FACTORY = {
