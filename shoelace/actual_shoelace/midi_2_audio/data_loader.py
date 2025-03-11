@@ -187,7 +187,15 @@ def collate_fn(batch):
 
 
     arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
-    midi_data = torch.stack(arrays, dim=0).long()
+
+    max_len = max(len(x[1]) for x in batch)
+    midi_seq = [
+        np.pad(x, ((0, max_len - len(x[1])), (0, 0)), "constant", constant_values=(PAD, PAD))
+        if len(x[1]) < max_len else x[1]
+        for x[1] in batch
+    ]
+
+    midi_data = torch.from_numpy(np.stack(midi_seq, axis=0)).long()
 
     return {
         "AudioLM": {
