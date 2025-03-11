@@ -8,7 +8,7 @@ MODEL_FACTORY = {
     "AudioLM": {
         "model": MusicGenLora,
         "kwargs": {
-            "name": large,
+            "name": "large",
             "device": device,
             "r": 8,
             "lora_alpha": 16,
