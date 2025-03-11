@@ -10,5 +10,4 @@ CUDA_VISIBLE_DEVICES=0 python -m shoelace.actual_shoelace.midi_2_audio.finetune_
       --experiment_folder=$exp \
       --batch_size=$batch_size \
       --epoch=$e \
-      # --world_size=$w \
       --exp_name=$exp_dir
