@@ -119,7 +119,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
             writer.add_scalar("lr", lr, step)
             n_element += 1
             mean_loss += loss.item()
-            break
+            
 
             # Uncomment the lines below to perform periodic evaluation:
             # if i % 3000 == 0 and i > 0:
