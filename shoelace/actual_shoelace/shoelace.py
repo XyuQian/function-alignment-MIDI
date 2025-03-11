@@ -98,9 +98,9 @@ class Shoelace(nn.Module):
         # Create cross-attention adapters.
         # Adapter for model_names[0]: uses embeddings from model_names[1].
         adapter_a = LowRankMultiheadAttention(
-            in_dim=model_configs[model_names[1]]["emb_dim"],
+            in_dim=model_configs[model_names[1]]["in_dim"],
             low_rank_dim=model_configs[model_names[0]]["low_rank_dim"],
-            embed_dim=model_configs[model_names[0]]["emb_dim"],
+            embed_dim=model_configs[model_names[0]]["out_dim"],
             num_heads=model_configs[model_names[0]]["num_heads"]
         )
         adapters.append(adapter_a)

@@ -15,10 +15,10 @@ MODEL_FACTORY = {
         },
         "n_layers": 48,
         "low_rank_dim": 64,
-        "hidden_size": 2048,
+        "in_dim": 1024,
+        "out_dim": 2048,
         "n_heads": 32,
         "steps": 16,
-        "emb_dim": 2048,
         "checkpoint_path": None
     },
     "MIDILM": {
@@ -31,7 +31,8 @@ MODEL_FACTORY = {
         },
         "n_layers": 12,
         "low_rank_dim": 64,
-        "hidden_size": 1024,
+        "in_dim": 2048,
+        "out_dim": 1024,
         "n_heads": 8,
         "steps": 1,
         "seq_len": 0,
