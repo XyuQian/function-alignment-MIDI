@@ -236,6 +236,10 @@ class TransformerEncoderLayer(nn.TransformerEncoderLayer):
         if self.cross_attention:
             self.cross_attention.init_qkv()
 
+    
+    def set_use_generator(self, flag: bool):
+        self.self_attn.set_use_generator(flag)
+
     def forward(
         self,
         src: torch.Tensor,
