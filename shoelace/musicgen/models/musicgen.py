@@ -33,7 +33,7 @@ class MusicGen(nn.Module):
         cache_dir = os.environ.get('MUSICGEN_ROOT', None)
 
         self.lm = load_lm_model(name, device=device, cache_dir=cache_dir)
-        self.lm.use_generator = use_generator
+        self.lm.set_use_generator(use_generator)
         self.use_generator = use_generator
         if device.type == 'cpu':
             self.autocast = TorchAutocast(enabled=False)
@@ -67,6 +67,7 @@ class MusicGen(nn.Module):
                 x = x[:, 1:]
                 pred = pred[:, :-1]
                 yield nn.CrossEntropyLoss(ignore_index=PAD)(pred.flatten(0, 2), x.flatten())
+
         if with_postprocess:
             pred = postprocess(pred)
         yield pred

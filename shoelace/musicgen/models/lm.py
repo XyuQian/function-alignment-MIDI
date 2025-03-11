@@ -169,6 +169,12 @@ class LMModel(nn.Module):
     def init_qkv(self):
         self.transformer.init_qkv()
 
+    def set_use_generator(flag : bool):
+        self.use_generator = flag
+        self.transformer.set_use_generator(flag)
+
+
+
     def _init_weights(self, weight_init, depthwise_init, zero_bias_init):
         if weight_init is None:
             return

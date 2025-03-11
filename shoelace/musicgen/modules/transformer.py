@@ -73,6 +73,10 @@ class BasicMultiheadAttention(nn.Module):
         # Out projection
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
+
+    def set_use_generator(flag : bool):
+        self.use_generator = flag
+        
     def init_qkv(self):
         """
         Splits in_proj_weight,bias into q_proj, k_proj, v_proj
@@ -323,6 +327,11 @@ class Transformer(nn.Module):
     def init_qkv(self):
         for layer in self.layers:
             layer.init_qkv()
+
+    def set_use_generator(flag : bool):
+        self.use_generator = flag
+        for layer in self.layers:
+            self.layer.set_use_generator(flag)
 
     def _apply_layer(
         self,
