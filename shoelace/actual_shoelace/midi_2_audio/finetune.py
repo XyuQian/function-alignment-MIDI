@@ -62,7 +62,7 @@ def evaluate(model, dataloader, e, i, device):
     logging.info("Starting evaluation...")
     dl = tqdm(dataloader, desc=f"Evaluate epoch {e} step {i}")
     for batch in dl:
-        loss = model(**batch)
+        loss = model(batch)
         total_loss += loss.item()
         num_batches += 1
 
@@ -115,7 +115,7 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
         logging.info(f"Epoch {e} started.")
 
         for i, batch in enumerate(dl):
-            loss = model(**batch)
+            loss = model(batch)
             grad, lr = trainer.step(loss, model.parameters())
 
             step += 1
