@@ -156,13 +156,16 @@ class Shoelace(nn.Module):
                 hidden_b = next(gen_dict[self.model_dict[1]["name"]])
             
             if i % layer_skips[0] == 0 and self.model_dict[0]["adapter"]:
-                print(hidden_b)
-                adapt_output_a = self.model_dict[0]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0])
+                seq_len_a, seq_len_b = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1]
+                mask, _ = create_mask(seq_len_a, seq_len_b)
+                adapt_output_a = self.model_dict[0]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0], mask)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 hidden_a[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[1] == 0 and self.bi_direction and self.model_dict[1]["adapter"]:
-                adapt_output_b = self.model_dict[1]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1])
+                seq_len_a, seq_len_b = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1]
+                mask, _ = create_mask(seq_len_b, seq_len_a)
+                adapt_output_b = self.model_dict[1]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1], mask)
                 hidden_b[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
@@ -180,7 +183,7 @@ if __name__=="__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     model = Shoelace(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"]).to(device)
     midi_seq = torch.ones([2, 20, 6]).to(device).long()
-    audio_seq = torch.ones([2, 4, 100]).to(device).long()
+    audio_seq = torch.ones([2, 100, 4]).to(device).long()
     batch = {
         "AudioLM":
             {"input_ids": audio_seq},
