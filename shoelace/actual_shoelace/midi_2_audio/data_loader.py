@@ -113,7 +113,7 @@ class ShoelaceDataset(Dataset):
                         midi_prefix_st = res_sos_indices[start_pos]
                         midi_prefix_ed = res_sos_indices[end_pos]
 
-                        if e_ed - e_st < 2:
+                        if midi_ed - midi_st < 2:
                             continue
                         self.index_map[worker_slot].append([i, j, start_idx, e_st, e_ed, midi_prefix_st, midi_prefix_ed])
 
