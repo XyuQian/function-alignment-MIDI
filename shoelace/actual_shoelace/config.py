@@ -17,7 +17,7 @@ MODEL_FACTORY = {
         "low_rank_dim": 64,
         "in_dim": 1024,
         "out_dim": 2048,
-        "n_heads": 32,
+        "num_heads": 32,
         "steps": 16,
         "checkpoint_path": None
     },
@@ -33,7 +33,7 @@ MODEL_FACTORY = {
         "low_rank_dim": 64,
         "in_dim": 2048,
         "out_dim": 1024,
-        "n_heads": 8,
+        "num_heads": 8,
         "steps": 1,
         "seq_len": 0,
         "checkpoint_path": None
