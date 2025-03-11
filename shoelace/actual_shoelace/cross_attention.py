@@ -67,8 +67,7 @@ class LowRankMultiheadAttention(nn.Module):
         q_len, kv_len = q.shape[2], kv_x.shape[1]
 
         prompt = self.prompt.repeat(len(kv_x), 1, 1)
-        print(prompt.shape, kv_x.shape)
-        kv_x = torch.concat([self.prompt, kv_x], 1)
+        kv_x = torch.concat([prompt, kv_x], 1)
 
         print(q.shape, kv_x.shape, attn_mask.shape)
         key = self.k_linear(kv_x)
