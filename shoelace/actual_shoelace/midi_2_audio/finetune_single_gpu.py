@@ -95,7 +95,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
     logging.info(f"Training started for {epochs} epochs.")
 
     min_loss = float('inf')
-    eval_loss = evaluate(model, val_dataloader, 0, 0, device)
+    eval_loss = 23
     min_loss = save_model(model, writer, eval_loss, 0, model_dir, step, 0, 0, min_loss)
 
     for e in range(epochs):
@@ -119,6 +119,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
             writer.add_scalar("lr", lr, step)
             n_element += 1
             mean_loss += loss.item()
+            break
 
             # Uncomment the lines below to perform periodic evaluation:
             # if i % 3000 == 0 and i > 0:
@@ -127,7 +128,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
             #                           model_dir, step, e, i, min_loss)
 
         logging.info(f"Epoch {e} finished. Saving model...")
-        model.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
+        model.save_weights(os.path.join(model_dir, f"latest_{e}_end"))
 
         eval_loss = evaluate(model, val_dataloader, e, "end", device)
         min_loss = save_model(model, writer, eval_loss, mean_loss / n_element, model_dir, step, e, "end", min_loss)
