@@ -6,11 +6,10 @@ MODEL_FACTORY = {
     "AudioLM": {
         "model": MusicGenLora,
         "kwargs": {
-            "n_layers": 48,
-            "sec": 16,
-            "r": 16,
-            "lora_alpha": 8,
+            "r": 8,
+            "lora_alpha": 16,
         },
+        "n_layers": 48,
         "low_rank_dim": 64,
         "hidden_size": 2048,
         "n_heads": 32,
@@ -20,12 +19,12 @@ MODEL_FACTORY = {
     },
     "MIDILM": {
         "model": MIDILMLora,
+        "n_layers": 48,
         "kwargs": {
-            "n_layers": 12,
-            "sec": 16,
-            "r": 16,
-            "lora_alpha": 8
+            "r": 8,
+            "lora_alpha": 16
         },
+        "n_layers": 12,
         "low_rank_dim": 64,
         "hidden_size": 1024,
         "n_heads": 8,
