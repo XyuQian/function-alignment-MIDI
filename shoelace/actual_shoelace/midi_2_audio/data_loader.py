@@ -4,8 +4,9 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from .config import MAX_DUR, FRAME_RATE
+from shoelace.musicgen.finetune.config import MAX_DUR, FRAME_RATE
 
+TOL_WIN = 2
 
 def load_data_lst(path_folder: str, validation: bool):
     """
@@ -101,11 +102,15 @@ class ShoelaceDataset(Dataset):
 
                         if start_idx//SEG_RES >= len(sos_indices) - 1:
                             continue
-                        midi_st = sos_indices[start_idx//SEG_RES]
-                        midi_ed = sos_indices[start_idx//SEG_RES + 1]
+                        
+                        start_pos = start_idx//SEG_RES
+                        end_pos = (start_idx + MAX_DUR) // SEG_RES + TOL_WIN
+                        end_pos = len(sos_indices) - 1 if end_pos >= len(sos_indices) else end_pos
+                        midi_st = sos_indices[start_pos]
+                        midi_ed = sos_indices[end_pos]
 
-                        midi_prefix_st = res_sos_indices[start_idx//SEG_RES]
-                        midi_prefix_ed = res_sos_indices[start_idx//SEG_RES + 1]
+                        midi_prefix_st = res_sos_indices[start_pos]
+                        midi_prefix_ed = res_sos_indices[end_pos]
 
                         if e_ed - e_st < 2:
                             continue
