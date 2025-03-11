@@ -40,12 +40,12 @@ class LowRankMultiheadAttention(nn.Module):
 
         self.k_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
         self.v_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
-        self.q_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
-        self.k_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
+        # self.q_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
+        # self.k_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
 
         self.prompt = nn.Parameter(torch.randn(1, 1, in_dim), requires_grad=True)
         self.gate = nn.Parameter(torch.zeros(1), requires_grad=True)
-        self.pos_encoding = PositionalEncoding(d_model=out_dim)
+        # self.pos_encoding = PositionalEncoding(d_model=out_dim)
 
     @staticmethod
     def _create_low_rank_mlp(in_dim: int, low_rank_dim: int, out_dim: int):
