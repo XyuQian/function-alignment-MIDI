@@ -13,6 +13,7 @@ MODEL_FACTORY = {
             "r": 8,
             "lora_alpha": 16,
         },
+        "layer_skip": 1,
         "n_layers": 48,
         "low_rank_dim": 64,
         "in_dim": 1024,
@@ -29,6 +30,7 @@ MODEL_FACTORY = {
             "lora_alpha": 16,
             "model_path": "save_models/midi_lm.pth"
         },
+        "layer_skip": 6,
         "n_layers": 12,
         "low_rank_dim": 64,
         "in_dim": 2048,
