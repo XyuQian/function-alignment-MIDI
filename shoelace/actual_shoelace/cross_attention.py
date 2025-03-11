@@ -34,8 +34,8 @@ class LowRankMultiheadAttention(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, num_heads: int, low_rank_dim: int = 64, dropout: float = 0.1):
         super().__init__()
         self.num_heads = num_heads
-        self.head_dim = embed_dim // num_heads
-        self.embed_dim = embed_dim
+        self.head_dim = out_dim // num_heads
+        self.embed_dim = out_dim
         self.dropout = nn.Dropout(dropout)
 
         self.k_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
@@ -45,7 +45,7 @@ class LowRankMultiheadAttention(nn.Module):
 
         self.prompt = nn.Parameter(torch.randn(1, 1, in_dim), requires_grad=True)
         self.gate = nn.Parameter(torch.zeros(1), requires_grad=True)
-        self.pos_encoding = PositionalEncoding(d_model=embed_dim)
+        self.pos_encoding = PositionalEncoding(d_model=out_dim)
 
     @staticmethod
     def _create_low_rank_mlp(in_dim: int, low_rank_dim: int, out_dim: int):
