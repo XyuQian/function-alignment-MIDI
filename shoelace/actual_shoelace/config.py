@@ -9,7 +9,6 @@ MODEL_FACTORY = {
         "model": MusicGenLora,
         "kwargs": {
             "name": "large",
-            "device": device,
             "r": 8,
             "lora_alpha": 16,
         },

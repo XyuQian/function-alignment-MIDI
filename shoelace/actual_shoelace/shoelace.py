@@ -61,7 +61,7 @@ def parse_dict(model_config: dict, model_name: str) -> dict:
 
 
 class Shoelace(nn.Module):
-    def __init__(self, model_configs: dict, bi_direction: bool = False, model_names: list = None):
+    def __init__(self, device : torch.device, model_configs: dict, bi_direction: bool = False, model_names: list = None):
         """
         Initialize the Shoelace model with given configurations.
 
@@ -82,6 +82,7 @@ class Shoelace(nn.Module):
 
         # Initialize models and load weights.
         for key, config in model_configs.items():
+            config["kwargs"]["device"] = device
             model_instance = config["model"](use_generator=True, **config["kwargs"])
             model_instance.load_weights(config["checkpoint_path"])
             models.append(model_instance)
@@ -172,7 +173,7 @@ if __name__=="__main__":
     from shoelace.actual_shoelace.config import MODEL_FACTORY
     
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    model = Shoelace(model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"]).to(device)
+    model = Shoelace(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"]).to(device)
     midi_seq = torch.ones([2, 20, 6]).to(device)
     audio_seq = torch.ones([2, 100, 4]).to(device)
     batch = {
