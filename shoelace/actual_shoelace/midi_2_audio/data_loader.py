@@ -115,7 +115,7 @@ class ShoelaceDataset(Dataset):
 
                         if midi_ed - midi_st < 2:
                             continue
-                        self.index_map[worker_slot].append([i, j, start_idx, e_st, e_ed, midi_prefix_st, midi_prefix_ed])
+                        self.index_map[worker_slot].append([i, j, start_idx, midi_st, midi_ed, midi_prefix_st, midi_prefix_ed])
 
         # Flatten count
         self.total_segments = sum(len(self.index_map[k]) for k in self.index_map)
@@ -137,7 +137,7 @@ class ShoelaceDataset(Dataset):
         """
         # For demonstration, we always use '0' as the worker key in single-process usage.
         index_list = self.index_map[str(0)]
-        i, j, start_pos, start_midi, end_midi, midi_prefix_st, midi_prefix_ed = index_list[idx % len(index_list)]
+        i, j, start_pos, midi_st, midi_ed, midi_prefix_st, midi_prefix_ed = index_list[idx % len(index_list)]
 
         # The .lst reference
         fname = self.files[i][j]
@@ -152,7 +152,7 @@ class ShoelaceDataset(Dataset):
                 }
 
         audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + MAX_DUR]
-        midi_segment = self.cache_data[fname]["events"][start_midi : end_midi]
+        midi_segment = self.cache_data[fname]["events"][midi_st : midi_ed]
 
         if midi_prefix_ed > midi_prefix_st:
             prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]

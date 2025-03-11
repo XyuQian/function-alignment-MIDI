@@ -179,6 +179,26 @@ class Shoelace(nn.Module):
 
         return sum([loss[k] for k in loss])
 
+
+    def save_weights(self, model_folder: str):
+        """
+        Saves only LoRA-related parameters.
+        """
+        state = self.state_dict()
+        os.makedirs(path, exist_ok=True)
+        for key in list(state.keys()):
+            if not str.startswith(key, "adapters"):
+                state.pop(key)
+        torch.save(state, os.path.join(model_folder, "adapters.pth"))
+        for model_info in self.model_dict:
+            model_name = model_info["name"]
+            model = model_info["model"]
+            weights_folder = os.path.join(model_folder, model_name)
+            os.makedirs(weights_folder, exist_ok=True)
+            model.save_weights(weights_folder)
+
+        print(f"Weights saved to: {model_folder}")
+
 if __name__=="__main__":
     from shoelace.actual_shoelace.config import MODEL_FACTORY
     
