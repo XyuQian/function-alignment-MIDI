@@ -106,5 +106,5 @@ class SholaceParam(nn.Module):
             LowRankMultiheadAttention(in_dim, out_dim, num_heads, low_rank_dim)
             for _ in range(n_layers)])
 
-    def forward(self, hidden_a, hidden_b, layer_idx, attn_mask):
+    def forward(self, hidden_a, hidden_b, layer_idx, attn_mask=None):
         return self.cross_attn[layer_idx](hidden_a, hidden_b, attn_mask)
