@@ -73,7 +73,10 @@ class MusicGen(nn.Module):
 
     def forward(self, input_ids, **kwargs):
         generator = self.yield_forward(input_ids, **kwargs)
-        return next(generator)
+        if self.use_generator:
+            return generator
+        else:
+            return next(generator)
 
     def load_compression_model(self):
         if self.compression_model is None:
