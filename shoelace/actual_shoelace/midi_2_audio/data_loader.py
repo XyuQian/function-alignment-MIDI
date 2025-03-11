@@ -95,7 +95,7 @@ class ShoelaceDataset(Dataset):
                     sos_indices = hf[fname + ".sos"][:]
                     res_sos_indices = hf[fname + ".res_sos"][:]
                     
-
+                    print(sos_indices.shape, res_sos_indices.shape)
                     # Step in increments of 50
                     for start_idx in range(0, total_len, SEG_RES):
                         # Worker assignment
