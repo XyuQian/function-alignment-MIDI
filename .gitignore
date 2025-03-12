@@ -1,2 +1,8 @@
+
+
+data
+*.npy
+save_models/
+exp/
 test_results/
 logs/
