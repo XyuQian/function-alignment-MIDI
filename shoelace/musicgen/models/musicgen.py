@@ -140,8 +140,8 @@ if __name__ == "__main__":
     seq = seq[:, 50 * 10:20 * 50]
     print(seq.shape)
     codes = model.inference(seq)
-
+    print(codes.shape)
     
-    save_rvq(output_list, tokens)
+    save_rvq(["test"], codes)
 
 
