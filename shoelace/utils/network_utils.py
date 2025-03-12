@@ -42,7 +42,7 @@ def sample(logits, top_k_val=20, temperature=1.0):
     result_flat = flat_topk_indices.gather(-1, sampled_indices)
 
     # Reshape back to the original prefix shape with an extra singleton dimension.
-    return result_flat.view(*prefix_shape, 1)
+    return result_flat.view(*prefix_shape)
 
 
 def generator_switch(x, use_generator, use_from=True):
