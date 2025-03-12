@@ -79,32 +79,33 @@ def multi_head_attention_forward(
         kv_cache["past_q"] = past_q
         kv_cache["past_query"] = past_query
 
+        is_causal = False
+        attn_mask = None
 
-    # if is_causal and attn_mask is None:
-    #     tgt_len, src_len = q.shape[2], k.shape[2]
-    #     causal_mask = torch.triu(torch.ones(tgt_len, src_len, device=q.device), diagonal=1).bool()
-    #     causal_mask = causal_mask.float().masked_fill(causal_mask, float('-inf'))
-    #     attn_mask = causal_mask.unsqueeze(0).unsqueeze(0)
-    #     is_causal = False
+
+    if is_causal:
+        tgt_len, src_len = q.shape[2], k.shape[2]
+        causal_mask = torch.triu(torch.ones(tgt_len, src_len, device=q.device), diagonal=1).bool()
+        causal_mask = causal_mask.float().masked_fill(causal_mask, float('-inf'))
+        attn_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+        is_causal = False
         
     
 
-    # if key_padding_mask is not None:
+    if key_padding_mask is not None:
        
-        # assert key_padding_mask.shape == (batch_size, k.shape[2]), \
-        #     "key_padding_mask shape must match (batch_size, key_length)"
+        assert key_padding_mask.shape == (batch_size, k.shape[2]), \
+            "key_padding_mask shape must match (batch_size, key_length)"
        
-        # key_padding_mask = key_padding_mask[:, None, None, :]
-        # key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
-        # if attn_mask is not None:
-        #     attn_mask = attn_mask + key_padding_mask
-        # else:
-        #     attn_mask = key_padding_mask
+        key_padding_mask = key_padding_mask[:, None, None, :]
+        key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
+        if attn_mask is not None:
+            attn_mask = attn_mask + key_padding_mask
+        else:
+            attn_mask = key_padding_mask
     
     
-    attn_output = F.scaled_dot_product_attention(q, k, v, None, dropout_p, is_causal)
-    test_output = F.scaled_dot_product_attention(q[:, :, -1:], k, v, None, dropout_p, False)
-    print(torch.sum(torch.abs(attn_output[:, :, -1:] - test_output)))
+    attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
     attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 
     if use_generator:
