@@ -175,7 +175,6 @@ class PositionalEncoding(nn.Module):
             sid = self.cache
             eid = sid + x.shape[1]
             self.cache = eid
-            print(sid, eid)
             return x + self.r_pos[:, sid :eid, :]
 
 
@@ -303,7 +302,7 @@ class MIDILM(nn.Module):
             decoder_output = self(prompt, return_memory=True, 
                         return_loss=False, with_sos=with_sos)
             with_sos = False
-            
+            print(decoder_output.shape)
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
             next_token = self.baby_llm.inference(memory=decoder_output,
