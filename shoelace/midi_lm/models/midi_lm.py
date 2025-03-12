@@ -200,8 +200,7 @@ class MIDILM(nn.Module):
         """
         Forward pass for MIDI language modeling.
         """
-        input_x = F.pad(x, (0, 0, 1, 0), "constant", SOS) if with_sos else \
-            F.pad(x, (0, 0, 1, 0), "constant", SOS)
+        input_x = F.pad(x, (0, 0, 1, 0), "constant", SOS) if with_sos else x
         
         if return_loss:
             input_x = input_x[:, :-1]
