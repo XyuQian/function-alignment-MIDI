@@ -133,7 +133,7 @@ class MusicGen(nn.Module):
 
 if __name__ == "__main__":
     audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
-    model = MusicGen(name="large", device="cuda")
+    model = MusicGen(name="large", device=torch.device("cuda"))
     model.prepare_for_lora()
     model.eval()
     seq = model.load_from_audio(audio_path)
