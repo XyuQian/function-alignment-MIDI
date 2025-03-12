@@ -80,16 +80,16 @@ def multi_head_attention_forward(
         kv_cache["past_query"] = past_query
 
 
-    if is_causal and attn_mask is None:
-        tgt_len, src_len = q.shape[2], k.shape[2]
-        causal_mask = torch.triu(torch.ones(tgt_len, src_len, device=q.device), diagonal=1).bool()
-        causal_mask = causal_mask.float().masked_fill(causal_mask, float('-inf'))
-        attn_mask = causal_mask.unsqueeze(0).unsqueeze(0)
-        is_causal = False
+    # if is_causal and attn_mask is None:
+    #     tgt_len, src_len = q.shape[2], k.shape[2]
+    #     causal_mask = torch.triu(torch.ones(tgt_len, src_len, device=q.device), diagonal=1).bool()
+    #     causal_mask = causal_mask.float().masked_fill(causal_mask, float('-inf'))
+    #     attn_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+    #     is_causal = False
         
     
 
-    if key_padding_mask is not None:
+    # if key_padding_mask is not None:
         # Ensure key_padding_mask shape matches key length
         assert key_padding_mask.shape == (batch_size, k.shape[2]), \
             "key_padding_mask shape must match (batch_size, key_length)"
@@ -101,7 +101,7 @@ def multi_head_attention_forward(
         else:
             attn_mask = key_padding_mask
     
-    print(q.shape, k.shape, v.shape, attn_mask.shape)
+    
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
     attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 
