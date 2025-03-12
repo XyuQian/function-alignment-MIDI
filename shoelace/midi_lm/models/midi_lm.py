@@ -175,6 +175,7 @@ class PositionalEncoding(nn.Module):
             sid = self.cache
             eid = sid + x.shape[1]
             self.cache = eid
+            print(sid, eid)
             return x + self.r_pos[:, sid :eid, :]
 
 
