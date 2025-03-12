@@ -90,7 +90,7 @@ class MusicGen(nn.Module):
         
         prompt = preprocess(x)
         codes = prompt[:, :-3]
-        x_len = codes.shape[1]
+        prompt_len = codes.shape[1]
         
         
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
@@ -99,8 +99,8 @@ class MusicGen(nn.Module):
             next_token = sample(logits[:, -1])
 
             if i < 4:
-                prompt[:, x_len + i , 3 - i:] = next_token[:, 3 - i:]
-                codes = prompt[: x_len + i + 1]
+                prompt[:, prompt_len + i , 3 - i:] = next_token[:, 3 - i:]
+                codes = prompt[: prompt_len + i + 1]
             else:
                 codes = torch.concat([codes, next_token[:, None]], 1)
             
