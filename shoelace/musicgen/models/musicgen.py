@@ -89,7 +89,7 @@ class MusicGen(nn.Module):
         
         prompt = preprocess(x)
         codes = prompt[:, :-3]
-        x_len = input_x.shape[1]
+        x_len = codes.shape[1]
         
         
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
