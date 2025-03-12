@@ -3,7 +3,7 @@ import librosa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shoelace.utils import sample
+from shoelace.network_utils import sample
 from .loaders import load_compression_model, load_lm_model
 from ..utils.autocast import TorchAutocast
 from ..data.audio import audio_write
@@ -141,4 +141,5 @@ if __name__ == "__main__":
     print(seq.shape)
     codes = model.inference(seq)
     print(codes.shape)
+
 
