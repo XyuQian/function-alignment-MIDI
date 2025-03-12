@@ -138,7 +138,7 @@ if __name__ == "__main__":
     model.prepare_for_lora()
     model.eval()
     seq = model.load_from_audio(audio_path)
-    seq = seq[:, 50 * 10:20 * 50]
+    seq = seq[:, 50 * 10:15 * 50]
     print(seq.shape)
     codes = model.inference(seq)
     print(codes.shape)
