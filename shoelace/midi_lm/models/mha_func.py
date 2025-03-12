@@ -126,7 +126,7 @@ def multi_head_attention_forward(
 
     attn_output = out_proj(attn_output)
     attn_output = attn_output.view(batch_size, tgt_len, attn_output.size(1))
-    if kv_cache is None:
+    if not training and kv_cache is None:
         kv_cache = {
             "past_q": q,
             "past_k": k,
