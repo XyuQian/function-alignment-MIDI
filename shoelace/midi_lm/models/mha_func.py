@@ -101,7 +101,7 @@ def multi_head_attention_forward(
         # else:
         #     attn_mask = key_padding_mask
     
-    
+    print(q.shape, k.shape, v.shape)
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
     attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 

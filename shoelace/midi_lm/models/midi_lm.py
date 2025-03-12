@@ -168,7 +168,7 @@ class PositionalEncoding(nn.Module):
         self.cache = 0
 
     def forward(self, x):
-        if not self.training:
+        if self.training:
             x = x + self.r_pos[:, :x.shape[1], :]
             return x
         else:
@@ -296,10 +296,12 @@ class MIDILM(nn.Module):
         prompt_len = x.shape[1]
         prompt = x
         self.reset_cache()
+        with_sos = True
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
-            # print(prompt.shape)
+
             decoder_output = self(prompt, return_memory=True, 
-                        return_loss=False, with_sos=True)
+                        return_loss=False, with_sos=with_sos)
+            with_sos = False
             
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
@@ -307,7 +309,7 @@ class MIDILM(nn.Module):
                                                  pre_token=decoded_sequence[-1],
                                                  temperature=temperature, top_k=top_k)
             decoded_sequence.append(next_token[:, None])
-            prompt = torch.concat([prompt, next_token[:, None]], 1)
+            prompt = next_token[:, None]
 
         decoded_sequence[0] = x
         return torch.concat(decoded_sequence, 1)
