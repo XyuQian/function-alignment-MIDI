@@ -3,6 +3,7 @@ import librosa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from shoelace.utils import sample
 from .loaders import load_compression_model, load_lm_model
 from ..utils.autocast import TorchAutocast
 from ..data.audio import audio_write
@@ -79,6 +80,32 @@ class MusicGen(nn.Module):
         else:
             return next(generator)
 
+    @torch.no_grad()
+    def inference(self, x, max_len=int(15.36*50), top_k=100, temperature=1.0):
+        """
+        Performs inference by generating a sequence step-by-step.
+        """
+
+        
+        prompt = preprocess(x)
+        codes = prompt[:, :-3]
+        x_len = input_x.shape[1]
+        
+        
+        for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
+
+            logits = self(codes)
+            next_token = sample(logits[:, -1])
+
+            if i < 4:
+                prompt[:, x_len + i , 3 - i:] = next_token[:, 3 - i:]
+                codes = prompt[: x_len + i + 1]
+            else:
+                codes = torch.concat([codes, next_token[:, None]], 1)
+            
+        return postprocess(codes)
+        
+
     def load_compression_model(self):
         if self.compression_model is None:
             self.compression_model = load_compression_model(**self.compression_model_config)
@@ -112,9 +139,6 @@ if __name__ == "__main__":
     seq = model.load_from_audio(audio_path)
     seq = seq[:, 50 * 10:20 * 50]
     print(seq.shape)
-    with torch.no_grad():
-        y = model(seq, return_loss=False)
-        codes = torch.argmax(y, -1)
-        print(codes.shape)
-        codes = codes.transpose(1, 2)
-    model.decode_audio(codes, ["test_audio"])
+    codes = model.inference(seq)
+    print(codes.shape)
+

@@ -1,6 +1,7 @@
 from tqdm import tqdm
 import torch.nn as nn
 import torch.nn.functional as F
+from shoelace.utils.network_utils import sample
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
@@ -89,17 +90,7 @@ def check_fn(tgt: torch.Tensor, token: torch.Tensor, pre_token: torch.Tensor, i:
     return False  # Token is valid
 
 
-def sample(logits, top_k_val=20, temperature=1.0):
-    """
-    Samples the next token from the logits using top-k sampling.
-    """
-    logits = logits / temperature
-    top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
-    top_k_probs = F.softmax(top_k_logits, dim=-1)
-    sampled_indices = torch.multinomial(top_k_probs.reshape(-1, top_k_probs.shape[-1]), num_samples=1)
-    top_k_indices = top_k_indices.flatten(0, 1)
-    next_token = top_k_indices.gather(-1, sampled_indices)
-    return next_token.view(-1, 1)  # Ensure proper dimensionality
+
 
 
 class BabyLLM(nn.Module):
@@ -129,13 +120,13 @@ class BabyLLM(nn.Module):
             attn_mask = nn.Transformer.generate_square_subsequent_mask(tgt.shape[1]).to(tgt.device)
             input_x = self.in_layer(tgt) + self.pos_emb[:, :tgt.shape[1], :]
             decoder_output = self.decoder(input_x, memory, tgt_mask=attn_mask, tgt_is_causal=True)
-            logits = self.output_layer(decoder_output[:, -1:])  # Ensure correct shape
+            logits = self.output_layer(decoder_output[:, -1])  # Ensure correct shape
             next_token = None
 
             # while check_fn(tgt, next_token, pre_token, i):
             next_token = sample(logits, top_k_val=top_k, temperature=temperature)
 
-            tgt = torch.cat([tgt, next_token], dim=1)
+            tgt = torch.cat([tgt, next_token[:, None]], dim=1)
 
         # Apply SEG_RES mask
         tgt = tgt[:, 1:]  # Remove initial SOS

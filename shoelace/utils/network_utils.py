@@ -6,6 +6,53 @@ from typing import Any, Callable, Optional, Union
 import torch.nn.functional as F
 
 
+import torch
+import torch.nn.functional as F
+
+def sample(logits, top_k_val=20, temperature=1.0):
+    """
+    Samples the next token from logits using top-k sampling.
+    
+    This function supports 2D logits (batch, vocab_size) and 3D logits 
+    (batch, seq_len, vocab_size).
+    
+    Args:
+        logits: Tensor of shape (batch, vocab_size) or (batch, seq_len, vocab_size)
+        top_k_val: The number of top tokens to consider.
+        temperature: Temperature factor for scaling logits.
+        
+    Returns:
+        A tensor containing the sampled token indices with shape:
+          - (batch, 1) for 2D logits, or
+          - (batch, seq_len, 1) for 3D logits.
+    """
+    logits = logits / temperature
+
+    if logits.dim() == 2:
+        # For logits of shape (batch, vocab_size)
+        top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
+        top_k_probs = F.softmax(top_k_logits, dim=-1)
+        sampled_indices = torch.multinomial(top_k_probs, num_samples=1)
+        next_token = top_k_indices.gather(-1, sampled_indices)
+        return next_token  # Shape: (batch, 1)
+    
+    elif logits.dim() == 3:
+        # For logits of shape (batch, seq_len, vocab_size)
+        batch, seq_len, vocab_size = logits.shape
+        top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
+        top_k_probs = F.softmax(top_k_logits, dim=-1)
+        # Flatten the batch and sequence dimensions for sampling.
+        flat_probs = top_k_probs.reshape(-1, top_k_val)
+        sampled_indices = torch.multinomial(flat_probs, num_samples=1)
+        flat_topk_indices = top_k_indices.reshape(-1, top_k_val)
+        next_token_flat = flat_topk_indices.gather(-1, sampled_indices)
+        # Reshape back to (batch, seq_len, 1)
+        next_token = next_token_flat.view(batch, seq_len, 1)
+        return next_token
+    else:
+        raise ValueError("logits must be either a 2D or 3D tensor")
+
+
 def generator_switch(x, use_generator, use_from=True):
     if not use_generator:
         return x
