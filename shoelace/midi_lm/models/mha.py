@@ -56,6 +56,10 @@ class MultiheadAttention(Module):
             constant_(self.v_proj.bias, 0.0)
             constant_(self.out_proj.bias, 0.0)
 
+
+    def reset_cache(self):
+        self.kv_cache = None
+
     def forward(
             self,
             query: Tensor,

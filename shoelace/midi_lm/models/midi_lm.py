@@ -162,11 +162,20 @@ class PositionalEncoding(nn.Module):
         pe[:, 0::2] = torch.sin(position * div_term)
         pe[:, 1::2] = torch.cos(position * div_term)
         self.register_buffer("r_pos", pe.unsqueeze(0))
+        self.cache = 0
+
+    def reset_cache(self):
+        self.cache = 0
 
     def forward(self, x):
-        
-        x = x + self.r_pos[:, :x.shape[1], :]
-        return x
+        if self.training:
+            x = x + self.r_pos[:, :x.shape[1], :]
+            return x
+        else:
+            sid = self.cache
+            eid = sid + x.shape[1]
+            self.cache = eid
+            return x + self.r_pos[:, sid :eid, :]
 
 
 class InputEmbedding(nn.Module):
@@ -195,6 +204,10 @@ class MIDILM(nn.Module):
         decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True, use_generator=use_generator)
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"], use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
+
+    def reset_cache(self):
+        self.pos_encoding.reset_cache()
+        self.transformer_decoder.reset_cache()
 
     def yield_forward(self, x, return_loss=True, return_memory=False, with_sos=True, **kwargs):
         """
@@ -282,7 +295,7 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt_len = x.shape[1]
         prompt = x
-
+        self.reset_cache()
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             # print(prompt.shape)
             decoder_output = self(prompt, return_memory=True, 

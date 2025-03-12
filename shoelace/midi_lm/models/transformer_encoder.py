@@ -53,6 +53,9 @@ class TransformerEncoderLayer(Module):
 
         self.use_generator = use_generator
 
+    def reset_cache(self):
+        self.self_attn.reset_cache()
+
     def forward(
             self, src, src_mask: Optional[Tensor] = None, src_key_padding_mask: Optional[Tensor] = None,
             is_causal: bool = False
@@ -129,6 +132,11 @@ class TransformerEncoder(Module):
             output = self.norm(output)
 
         return output
+
+
+    def reset_cache(self):
+        for layer in self.layers:
+            layer.reset_cache()
 
     def load_from_torch_model(self, state_dict):
     
