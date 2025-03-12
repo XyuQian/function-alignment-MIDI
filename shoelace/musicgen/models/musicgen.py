@@ -142,6 +142,7 @@ if __name__ == "__main__":
     seq = model.load_from_audio(audio_path)
     seq = seq[:, 50 * 10:15 * 50]
     print(seq.shape)
+    np.save("encodes.npy", seq.cpu().numpy())
     codes = model.inference(seq)
     print(codes.shape)
     print(codes[codes == 2048].sum())
