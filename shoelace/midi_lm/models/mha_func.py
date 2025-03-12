@@ -102,14 +102,17 @@ def multi_head_attention_forward(
 
     if use_generator:
         if not training and kv_cache is not None:
-            # Use the accumulated queries from cache
-            query = kv_cache["past_query"]
-            q = kv_cache["past_q"]
-        wrap_attn_output = [{
-            "attn_output": attn_output,
-            "query": query,
-            "q": q
-        }]
+            wrap_attn_output = [{
+                "attn_output": attn_output,
+                "query": past_query,
+                "q": past_q
+            }]
+        else:
+            wrap_attn_output = [{
+                "attn_output": attn_output,
+                "query": query,
+                "q": q
+            }]
         yield wrap_attn_output
         attn_output = wrap_attn_output[0]["attn_output"]
 
