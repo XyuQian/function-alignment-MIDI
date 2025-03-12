@@ -7,6 +7,7 @@ from shoelace.utils.network_utils import sample
 from .loaders import load_compression_model, load_lm_model
 from ..utils.autocast import TorchAutocast
 from ..data.audio import audio_write
+from tqdm import tqdm
 
 PAD = 2048
 
