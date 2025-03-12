@@ -131,6 +131,7 @@ class MusicGen(nn.Module):
 
 
 if __name__ == "__main__":
+    from shoelace.utils.encodec_utils import save_rvq
     audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
     model = MusicGen(name="large", device=torch.device("cuda"))
     model.prepare_for_lora()
@@ -139,6 +140,8 @@ if __name__ == "__main__":
     seq = seq[:, 50 * 10:20 * 50]
     print(seq.shape)
     codes = model.inference(seq)
-    print(codes.shape)
+
+    
+    save_rvq(output_list, tokens)
 
 
