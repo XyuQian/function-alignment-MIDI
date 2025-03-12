@@ -196,12 +196,16 @@ class MIDILM(nn.Module):
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"], use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
 
-    def yield_forward(self, x, return_loss=True, return_memory=False, cut_x=True, **kwargs):
+    def yield_forward(self, x, return_loss=True, return_memory=False, with_sos=True, **kwargs):
         """
         Forward pass for MIDI language modeling.
         """
-        input_x = F.pad(x[:, :-1], (0, 0, 1, 0), "constant", SOS) if cut_x else \
+        input_x = F.pad(x, (0, 0, 1, 0), "constant", SOS) if with_sos else \
             F.pad(x, (0, 0, 1, 0), "constant", SOS)
+        
+        if return_loss:
+            input_x = input_x[:, :-1]
+
         embed_x = self.input_embedding(input_x)
         
         embed_x_with_pos = self.pos_encoding(embed_x)
@@ -210,7 +214,7 @@ class MIDILM(nn.Module):
                                             attn_window=512,
                                             mask_prob=0.7, device=embed_x.device)
 
-        src_padding_mask = x[:, :, 0] == PAD if cut_x else None
+        src_padding_mask = x[:, :, 0] == PAD if return_loss else None
 
         decoder_output = yield from self.transformer_decoder(embed_x_with_pos,
                                                              src_key_padding_mask=src_padding_mask,
@@ -281,7 +285,7 @@ class MIDILM(nn.Module):
         prompt = x
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             # print(prompt.shape)
-            decoder_output = self(prompt, return_memory=True, return_loss=False, cut_x=False)
+            decoder_output = self(prompt, return_memory=True, return_loss=False, cut_x=i == 0)
             
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
