@@ -168,13 +168,14 @@ class PositionalEncoding(nn.Module):
         self.cache = 0
 
     def forward(self, x):
-        if self.training:
+        if not self.training:
             x = x + self.r_pos[:, :x.shape[1], :]
             return x
         else:
             sid = self.cache
             eid = sid + x.shape[1]
             self.cache = eid
+
             return x + self.r_pos[:, sid :eid, :]
 
 
@@ -302,14 +303,14 @@ class MIDILM(nn.Module):
             decoder_output = self(prompt, return_memory=True, 
                         return_loss=False, with_sos=with_sos)
             with_sos = False
-            print(decoder_output.shape)
+            
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
             next_token = self.baby_llm.inference(memory=decoder_output,
                                                  pre_token=decoded_sequence[-1],
                                                  temperature=temperature, top_k=top_k)
             decoded_sequence.append(next_token[:, None])
-            prompt = next_token[:, None]
+            prompt = torch.concat([prompt, next_token[:, None]], 1)
 
         decoded_sequence[0] = x
         return torch.concat(decoded_sequence, 1)

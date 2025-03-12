@@ -103,6 +103,8 @@ def multi_head_attention_forward(
     
     
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
+    test_output = F.scaled_dot_product_attention(q[:, :, -1:], k, v, attn_mask, dropout_p, is_causal)
+    print(torch.sum(torch.abs(attn_output[:, :, -1:] - test_output)))
     attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 
     if use_generator:
