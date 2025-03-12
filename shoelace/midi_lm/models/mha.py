@@ -63,7 +63,6 @@ class MultiheadAttention(Module):
             need_weights: bool = True,
             attn_mask: Optional[Tensor] = None,
             is_causal: bool = False,
-            kv_cache: Optional[Dict[str, Tensor]] = None,
     ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
         """
         Computes multi-head attention using scaled dot-product attention.
@@ -96,7 +95,7 @@ class MultiheadAttention(Module):
             attn_mask=attn_mask,
             is_causal=is_causal,
             training=self.training,
-            kv_cache=kv_cache,
+            kv_cache=self.kv_cache,
             use_generator=self.use_generator
         )
         self.kv_cache = kv_cache

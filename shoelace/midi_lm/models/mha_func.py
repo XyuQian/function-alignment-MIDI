@@ -122,5 +122,6 @@ def multi_head_attention_forward(
             "past_v": v,
             "past_query": query
         }
-    print([[r, kv_cache[r].shape] for r in kv_cache])
+    for r in kv_cache:
+        print(r, kv_cache[r].shape)
     return attn_output, kv_cache
