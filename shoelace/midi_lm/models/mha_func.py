@@ -90,16 +90,16 @@ def multi_head_attention_forward(
     
 
     # if key_padding_mask is not None:
-        # Ensure key_padding_mask shape matches key length
-        assert key_padding_mask.shape == (batch_size, k.shape[2]), \
-            "key_padding_mask shape must match (batch_size, key_length)"
-        # Expand mask to (batch_size, 1, 1, key_length)
-        key_padding_mask = key_padding_mask[:, None, None, :]
-        key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
-        if attn_mask is not None:
-            attn_mask = attn_mask + key_padding_mask
-        else:
-            attn_mask = key_padding_mask
+       
+        # assert key_padding_mask.shape == (batch_size, k.shape[2]), \
+        #     "key_padding_mask shape must match (batch_size, key_length)"
+       
+        # key_padding_mask = key_padding_mask[:, None, None, :]
+        # key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
+        # if attn_mask is not None:
+        #     attn_mask = attn_mask + key_padding_mask
+        # else:
+        #     attn_mask = key_padding_mask
     
     
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
