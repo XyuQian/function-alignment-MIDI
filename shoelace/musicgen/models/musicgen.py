@@ -3,7 +3,7 @@ import librosa
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from shoelace.network_utils import sample
+from shoelace.utils.network_utils import sample
 from .loaders import load_compression_model, load_lm_model
 from ..utils.autocast import TorchAutocast
 from ..data.audio import audio_write
