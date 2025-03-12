@@ -79,6 +79,18 @@ def multi_head_attention_forward(
         kv_cache["past_q"] = past_q
         kv_cache["past_query"] = past_query
 
+
+    if is_causal and attn_mask is None:
+        # Assume q has shape (batch_size, num_heads, tgt_len, head_dim)
+        # and k has shape (batch_size, num_heads, src_len, head_dim).
+        tgt_len, src_len = q.shape[2], k.shape[2]
+        causal_mask = torch.triu(torch.ones(tgt_len, src_len, device=q.device), diagonal=1).bool()
+        causal_mask = causal_mask.float().masked_fill(causal_mask, float('-inf'))
+        # Expand to (1, 1, tgt_len, src_len) for broadcasting.
+        attn_mask = causal_mask.unsqueeze(0).unsqueeze(0)
+        is_causal = False
+    
+
     if key_padding_mask is not None:
         # Ensure key_padding_mask shape matches key length
         assert key_padding_mask.shape == (batch_size, k.shape[2]), \
@@ -86,7 +98,6 @@ def multi_head_attention_forward(
         # Expand mask to (batch_size, 1, 1, key_length)
         key_padding_mask = key_padding_mask[:, None, None, :]
         key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
-        is_causal = False
         if attn_mask is not None:
             attn_mask = attn_mask + key_padding_mask
         else:
