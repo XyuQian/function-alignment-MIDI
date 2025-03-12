@@ -22,8 +22,9 @@ def preprocess(x):
 def postprocess(x):
     outputs = []
     x_len = x.shape[1]
+
     for i in range(4):
-        outputs.append(x[:, 4 - i: x_len - i, i, :])
+        outputs.append(x[:, 4 - i: x_len - i, i])
     return torch.stack(outputs, -2)
 
 
