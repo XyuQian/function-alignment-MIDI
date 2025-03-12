@@ -99,7 +99,7 @@ class MultiheadAttention(Module):
             attn_mask=attn_mask,
             is_causal=is_causal,
             training=self.training,
-            kv_cache=self.kv_cache,
+            kv_cache=None,
             use_generator=self.use_generator
         )
         self.kv_cache = kv_cache
