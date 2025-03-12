@@ -157,4 +157,4 @@ def collate_fn(batch):
     arrays = [torch.from_numpy(b) if isinstance(b, np.ndarray) else b for b in batch]
     audio_data = torch.stack(arrays, dim=0).long()
 
-    return {"x": audio_data}
+    return {"input_ids": audio_data}

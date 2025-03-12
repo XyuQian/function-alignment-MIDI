@@ -279,7 +279,7 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt_len = x.shape[1]
         prompt = x
-        for _ in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
+        for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             # print(prompt.shape)
             decoder_output = self(prompt, return_memory=True, return_loss=False, cut_x=False)
             
@@ -289,7 +289,7 @@ class MIDILM(nn.Module):
                                                  pre_token=decoded_sequence[-1],
                                                  temperature=temperature, top_k=top_k)
             decoded_sequence.append(next_token[:, None])
-            prompt = torch.cat([prompt, next_token[:, None]], dim=1)
+            prompt = next_token[:, None]
 
         return prompt
 

@@ -1,10 +1,9 @@
 import torch
 from torch import Tensor
 from torch.nn import Module, Linear, Dropout
-
 from torch.nn.init import constant_, xavier_uniform_
 from .mha_func import multi_head_attention_forward
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Dict
 
 
 class MultiheadAttention(Module):
@@ -34,15 +33,16 @@ class MultiheadAttention(Module):
         self.head_dim = embed_dim // num_heads
 
         assert (
-                self.head_dim * num_heads == self.embed_dim
+            self.head_dim * num_heads == self.embed_dim
         ), "embed_dim must be divisible by num_heads"
 
         self.q_proj = Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
         self.k_proj = Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
         self.v_proj = Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
         self.out_proj = Linear(embed_dim, embed_dim, bias=bias, **factory_kwargs)
-
+        self.kv_cache = None
         self._reset_parameters()
+        
 
     def _reset_parameters(self):
         xavier_uniform_(self.q_proj.weight)
@@ -63,12 +63,25 @@ class MultiheadAttention(Module):
             need_weights: bool = True,
             attn_mask: Optional[Tensor] = None,
             is_causal: bool = False,
-    ) -> Tuple[Tensor, Optional[Tensor]]:
+            kv_cache: Optional[Dict[str, Tensor]] = None,
+    ) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
         """
         Computes multi-head attention using scaled dot-product attention.
+        
+        Args:
+            query: Input tensor of shape (batch_size, tgt_len, embed_dim).
+            key_padding_mask: Optional mask for keys.
+            need_weights: Whether to return attention weights (unused here).
+            attn_mask: Optional attention mask.
+            is_causal: Whether to apply a causal mask.
+            kv_cache: Optional dictionary containing key/value cache for inference.
+            
+        Returns:
+            A tuple (attn_output, kv_cache) where attn_output is the attention output,
+            and kv_cache is the updated key/value cache.
         """
         
-        attn_output = yield from multi_head_attention_forward(
+        attn_output, kv_cache = yield from multi_head_attention_forward(
             query,
             query,
             query,
@@ -83,7 +96,8 @@ class MultiheadAttention(Module):
             attn_mask=attn_mask,
             is_causal=is_causal,
             training=self.training,
+            kv_cache=kv_cache,
             use_generator=self.use_generator
         )
-
+        self.kv_cache = kv_cache
         return attn_output

@@ -141,8 +141,6 @@ def train(rank, model, dataset, dataloader, device, model_dir, learning_rate, ep
             #                           model_dir, step, e, i, min_loss)
 
         logging.info(f"Epoch {e} finished. Saving model...")
-        model.module.save_weights(os.path.join(model_dir, f"latest_{e}_end.pth"))
-
         eval_loss = evaluate(model, val_dataloader, e, "end", device)
         if rank == 0:
             min_loss = save_model(model, writer, eval_loss, mean_loss / n_element,

@@ -1,7 +1,7 @@
 from torch import Tensor
+import torch
 import torch.nn.functional as F
-from typing import Optional, Tuple, Callable
-
+from typing import Optional, Tuple, Callable, Dict
 
 def multi_head_attention_forward(
         query: Tensor,
@@ -13,54 +13,98 @@ def multi_head_attention_forward(
         k_proj: Callable[[Tensor], Tensor],
         v_proj: Callable[[Tensor], Tensor],
         dropout_p: float,
-
         out_proj: Callable[[Tensor], Tensor],
         key_padding_mask: Optional[Tensor] = None,
         training: bool = True,
         attn_mask: Optional[Tensor] = None,
         is_causal: bool = False,
+        kv_cache: Optional[Dict[str, Tensor]] = None,
         use_generator: bool = False,
-) -> Tuple[Tensor, Optional[Tensor]]:
+) -> Tuple[Tensor, Optional[Dict[str, Tensor]]]:
     """
     Compute multi-head attention forward pass using scaled dot-product attention.
+    Supports key/value caching for faster inference.
+    
+    Args:
+        query: Input tensor of shape (batch_size, tgt_len, embed_dim).
+        key: Key tensor.
+        value: Value tensor.
+        embed_dim: Embedding dimension.
+        num_heads: Number of attention heads.
+        q_proj, k_proj, v_proj: Projection functions for query, key, and value.
+        dropout_p: Dropout probability.
+        out_proj: Final projection function.
+        key_padding_mask: Optional mask for keys.
+        training: If False, inference mode is assumed.
+        attn_mask: Optional attention mask.
+        is_causal: Whether to apply a causal mask.
+        kv_cache: Optional dictionary containing cached tensors for inference.
+                  Expected keys: "past_k", "past_v", "past_q", "past_query".
+        use_generator: If True, yields a dictionary with intermediate outputs.
+        
+    Returns:
+        A tuple (attn_output, kv_cache). In training mode, kv_cache remains unchanged.
     """
     batch_size, tgt_len, embed_dim = query.shape
-    assert embed_dim == embed_dim, "Embedding dimensions must match."
     head_dim = embed_dim // num_heads
     assert head_dim * num_heads == embed_dim, "embed_dim must be divisible by num_heads"
 
-    if not training:        
+    # Disable dropout during inference
+    if not training:
         dropout_p = 0.0
+
     q = q_proj(query)
     k = k_proj(key)
     v = v_proj(value)
 
+    # Reshape projections to (batch_size, num_heads, seq_len, head_dim)
     q = q.contiguous().view(batch_size, tgt_len, num_heads, head_dim).transpose(1, 2)
     k = k.contiguous().view(batch_size, -1, num_heads, head_dim).transpose(1, 2)
     v = v.contiguous().view(batch_size, -1, num_heads, head_dim).transpose(1, 2)
 
-    if key_padding_mask is not None:
-        assert key_padding_mask.shape == (batch_size, key.shape[1]), \
-            "key_padding_mask shape must match (batch_size, key_length)"
+    # If a key/value cache is provided (for inference), append the new keys/values and queries to the cached ones.
+    if not training and kv_cache is not None:
+        past_k = kv_cache.get("past_k")
+        past_v = kv_cache.get("past_v")
+        past_q = kv_cache.get("past_q")
+        past_query = kv_cache.get("past_query")
+        if past_k is not None and past_v is not None and past_q is not None and past_query is not None:
+            # Concatenate along the sequence dimension for keys, values, and q
+            k = torch.cat([past_k, k], dim=2)
+            v = torch.cat([past_v, v], dim=2)
+            past_q = torch.cat([past_q, q], dim=2)
+            # For raw queries, concatenate along the time dimension (dim=1)
+            past_query = torch.cat([past_query, query], dim=1)
+        else:
+            # Initialize the cache if not already present
+            past_k, past_v, past_q, past_query = k, v, q, query
 
-        # Expand to (batch_size, 1, 1, key_len) and broadcast over heads & query positions
-        key_padding_mask = key_padding_mask[:, None, None, :]  # Shape: (batch_size, 1, 1, key_len)
-        key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))  # Set padding to -inf
-        # print(attn_mask.shape, key_padding_mask.shape)
-        # If attn_mask is also provided, combine them
+        kv_cache["past_k"] = k
+        kv_cache["past_v"] = v
+        kv_cache["past_q"] = past_q
+        kv_cache["past_query"] = past_query
+
+    if key_padding_mask is not None:
+        # Ensure key_padding_mask shape matches key length
+        assert key_padding_mask.shape == (batch_size, k.shape[2]), \
+            "key_padding_mask shape must match (batch_size, key_length)"
+        # Expand mask to (batch_size, 1, 1, key_length)
+        key_padding_mask = key_padding_mask[:, None, None, :]
+        key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
         is_causal = False
         if attn_mask is not None:
             attn_mask = attn_mask + key_padding_mask
         else:
             attn_mask = key_padding_mask
 
-    attn_output = F.scaled_dot_product_attention(
-        q, k, v, attn_mask, dropout_p, is_causal)
-    attn_output = (
-        attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
-    )
+    attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
+    attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 
     if use_generator:
+        if not training and kv_cache is not None:
+            # Use the accumulated queries from cache
+            query = kv_cache["past_query"]
+            q = kv_cache["past_q"]
         wrap_attn_output = [{
             "attn_output": attn_output,
             "query": query,
@@ -71,4 +115,11 @@ def multi_head_attention_forward(
 
     attn_output = out_proj(attn_output)
     attn_output = attn_output.view(batch_size, tgt_len, attn_output.size(1))
-    return attn_output
+    if kv_cache is None:
+        kv_cache = {
+            "past_q": q,
+            "past_k": k,
+            "past_v": v,
+            "past_query": query
+        }
+    return attn_output, kv_cache
