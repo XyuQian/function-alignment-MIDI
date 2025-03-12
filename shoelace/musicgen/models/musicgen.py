@@ -95,7 +95,7 @@ class MusicGen(nn.Module):
         
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             print(codes.shape)
-            logits = self(codes)
+            logits = self(codes, with_preprocess=False, return_loss=False, with_postprocess=False)
             print(logits.shape)
             next_token = sample(logits[:, -1])
 
