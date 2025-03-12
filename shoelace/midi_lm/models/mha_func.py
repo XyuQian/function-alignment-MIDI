@@ -68,10 +68,10 @@ def multi_head_attention_forward(
         past_v = kv_cache.get("past_v")
         past_q = kv_cache.get("past_q")
         past_query = kv_cache.get("past_query")
-        k = torch.cat([past_k, k], dim=2)
-        v = torch.cat([past_v, v], dim=2)
-        past_q = torch.cat([past_q, q], dim=2)
-        past_query = torch.cat([past_query, query], dim=1)
+        k = torch.concat([past_k, k], dim=2)
+        v = torch.concat([past_v, v], dim=2)
+        past_q = torch.concat([past_q, q], dim=2)
+        past_query = torch.concat([past_query, query], dim=1)
         
 
         kv_cache["past_k"] = k
