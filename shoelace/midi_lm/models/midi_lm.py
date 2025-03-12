@@ -285,7 +285,7 @@ class MIDILM(nn.Module):
         prompt = x
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             # print(prompt.shape)
-            decoder_output = self(prompt, return_memory=True, return_loss=False, cut_x=i == 0)
+            decoder_output = self(prompt, return_memory=True, return_loss=False, pad_x=(i == 0))
             
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
