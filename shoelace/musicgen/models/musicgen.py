@@ -51,6 +51,9 @@ class MusicGen(nn.Module):
             "cache_dir": cache_dir
         }
 
+        self.prepare_for_lora()
+
+
     def prepare_for_lora(self):
         self.lm.init_qkv()
 
@@ -135,14 +138,13 @@ if __name__ == "__main__":
     from shoelace.utils.encodec_utils import save_rvq
     audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
     model = MusicGen(name="large", device=torch.device("cuda"))
-    model.prepare_for_lora()
     model.eval()
     seq = model.load_from_audio(audio_path)
     seq = seq[:, 50 * 10:15 * 50]
     print(seq.shape)
     codes = model.inference(seq)
     print(codes.shape)
-    
+    print(codes[codes == 2048].sum())
     save_rvq(["test"], codes)
 
 
