@@ -282,6 +282,7 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt_len = x.shape[1]
         prompt = x
+
         for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
             # print(prompt.shape)
             decoder_output = self(prompt, return_memory=True, return_loss=False, with_sos=(i == 0))
@@ -294,7 +295,8 @@ class MIDILM(nn.Module):
             decoded_sequence.append(next_token[:, None])
             prompt = next_token[:, None]
 
-        return prompt
+        decoded_sequence[0] = x
+        return torch.concat(decoded_sequence, 1)
 
     def save_weights(self, model_path):
         """
