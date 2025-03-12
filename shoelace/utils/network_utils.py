@@ -6,51 +6,43 @@ from typing import Any, Callable, Optional, Union
 import torch.nn.functional as F
 
 
-import torch
-import torch.nn.functional as F
 
 def sample(logits, top_k_val=20, temperature=1.0):
     """
     Samples the next token from logits using top-k sampling.
     
-    This function supports 2D logits (batch, vocab_size) and 3D logits 
-    (batch, seq_len, vocab_size).
+    Supports inputs with shape:
+      - 2D: (batch, vocab_size)         -> (batch, 1)
+      - 3D: (batch, seq_len, vocab_size)  -> (batch, seq_len, 1)
+      - 4D: (batch, other, seq_len, vocab_size) -> (batch, other, seq_len, 1)
     
     Args:
-        logits: Tensor of shape (batch, vocab_size) or (batch, seq_len, vocab_size)
-        top_k_val: The number of top tokens to consider.
-        temperature: Temperature factor for scaling logits.
-        
-    Returns:
-        A tensor containing the sampled token indices with shape:
-          - (batch, 1) for 2D logits, or
-          - (batch, seq_len, 1) for 3D logits.
-    """
-    logits = logits / temperature
-
-    if logits.dim() == 2:
-        # For logits of shape (batch, vocab_size)
-        top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
-        top_k_probs = F.softmax(top_k_logits, dim=-1)
-        sampled_indices = torch.multinomial(top_k_probs, num_samples=1)
-        next_token = top_k_indices.gather(-1, sampled_indices)
-        return next_token  # Shape: (batch, 1)
+        logits: Input tensor with logits, where the last dimension is vocab_size.
+        top_k_val: Number of top tokens to consider.
+        temperature: Temperature scaling factor.
     
-    elif logits.dim() == 3:
-        # For logits of shape (batch, seq_len, vocab_size)
-        batch, seq_len, vocab_size = logits.shape
-        top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
-        top_k_probs = F.softmax(top_k_logits, dim=-1)
-        # Flatten the batch and sequence dimensions for sampling.
-        flat_probs = top_k_probs.reshape(-1, top_k_val)
-        sampled_indices = torch.multinomial(flat_probs, num_samples=1)
-        flat_topk_indices = top_k_indices.reshape(-1, top_k_val)
-        next_token_flat = flat_topk_indices.gather(-1, sampled_indices)
-        # Reshape back to (batch, seq_len, 1)
-        next_token = next_token_flat.view(batch, seq_len, 1)
-        return next_token
-    else:
-        raise ValueError("logits must be either a 2D or 3D tensor")
+    Returns:
+        A tensor of sampled token indices with an extra trailing dimension.
+    """
+    # Scale logits and record the prefix shape (all dims except the last one)
+    logits = logits / temperature
+    prefix_shape = logits.shape[:-1]
+
+    # Compute top-k logits and indices along the last dimension.
+    top_k_logits, top_k_indices = torch.topk(logits, k=top_k_val, dim=-1)
+    # Compute softmax probabilities from the top-k logits.
+    top_k_probs = F.softmax(top_k_logits, dim=-1)
+
+    # Flatten all prefix dimensions for sampling.
+    flat_probs = top_k_probs.reshape(-1, top_k_val)
+    sampled_indices = torch.multinomial(flat_probs, num_samples=1)
+    
+    # Flatten top_k_indices in the same way and gather the sampled tokens.
+    flat_topk_indices = top_k_indices.reshape(-1, top_k_val)
+    result_flat = flat_topk_indices.gather(-1, sampled_indices)
+
+    # Reshape back to the original prefix shape with an extra singleton dimension.
+    return result_flat.view(*prefix_shape, 1)
 
 
 def generator_switch(x, use_generator, use_from=True):
