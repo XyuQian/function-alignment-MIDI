@@ -210,16 +210,16 @@ class MIDILM(nn.Module):
         
         embed_x_with_pos = self.pos_encoding(embed_x)
         
-        attn_mask = generate_attention_mask(seq_len=embed_x.shape[1],
-                                            attn_window=512,
-                                            mask_prob=0.7, device=embed_x.device)
+        # attn_mask = generate_attention_mask(seq_len=embed_x.shape[1],
+        #                                     attn_window=512,
+        #                                     mask_prob=0.7, device=embed_x.device)
 
         src_padding_mask = x[:, :, 0] == PAD if return_loss else None
 
         decoder_output = yield from self.transformer_decoder(embed_x_with_pos,
                                                              src_key_padding_mask=src_padding_mask,
                                                              is_causal=True,
-                                                             mask=attn_mask)
+                                                             mask=None)
         
         if return_memory:
             yield decoder_output

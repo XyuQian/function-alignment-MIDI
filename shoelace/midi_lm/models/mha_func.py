@@ -68,16 +68,11 @@ def multi_head_attention_forward(
         past_v = kv_cache.get("past_v")
         past_q = kv_cache.get("past_q")
         past_query = kv_cache.get("past_query")
-        if past_k is not None and past_v is not None and past_q is not None and past_query is not None:
-            # Concatenate along the sequence dimension for keys, values, and q
-            k = torch.cat([past_k, k], dim=2)
-            v = torch.cat([past_v, v], dim=2)
-            past_q = torch.cat([past_q, q], dim=2)
-            # For raw queries, concatenate along the time dimension (dim=1)
-            past_query = torch.cat([past_query, query], dim=1)
-        else:
-            # Initialize the cache if not already present
-            past_k, past_v, past_q, past_query = k, v, q, query
+        k = torch.cat([past_k, k], dim=2)
+        v = torch.cat([past_v, v], dim=2)
+        past_q = torch.cat([past_q, q], dim=2)
+        past_query = torch.cat([past_query, query], dim=1)
+        
 
         kv_cache["past_k"] = k
         kv_cache["past_v"] = v
@@ -96,7 +91,7 @@ def multi_head_attention_forward(
             attn_mask = attn_mask + key_padding_mask
         else:
             attn_mask = key_padding_mask
-
+    print(q, k, v, attn_mask.shape)
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
     attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
 
