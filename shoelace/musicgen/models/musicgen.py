@@ -12,10 +12,12 @@ from tqdm import tqdm
 PAD = 2048
 
 
-def preprocess(x):
+def preprocess(x, batch_size=None, device=None):
+    if x is None:
+        return torch.zeros(batch_size, 4, 4).to(device) + PAD
     outputs = []
     for i in range(4):
-        outputs.append(F.pad(x[..., i], (4 - i, i), "constant", PAD))
+        outputs.append(F.pad(x[..., i], (i + 1, 3 - i), "constant", PAD))
     return torch.stack(outputs, -1)
 
 
@@ -24,7 +26,7 @@ def postprocess(x):
     x_len = x.shape[1]
 
     for i in range(4):
-        outputs.append(x[:, 4 - i: x_len - i, i])
+        outputs.append(x[:, i + 1: x_len - (3 - i), i])
     return torch.stack(outputs, -2)
 
 
@@ -52,7 +54,12 @@ class MusicGen(nn.Module):
         }
 
         self.prepare_for_lora()
+        self.reset_cache()
 
+
+    def reset_cache(self):
+        self.lm.reset_cache()
+        self.cache = False
 
     def prepare_for_lora(self):
         self.lm.init_qkv()
@@ -86,28 +93,49 @@ class MusicGen(nn.Module):
             return next(generator)
 
     @torch.no_grad()
-    def inference(self, x, max_len=int(15.36*50), top_k=100, temperature=1.0):
+    def yield_inference(self, x, batch_size=None, device=None, 
+        last_chunk=True, max_len=int(15*50), top_k=250, temperature=1.0):
         """
         Performs inference by generating a sequence step-by-step.
         """
 
-        
-        prompt = preprocess(x)
-        codes = prompt[:, :-3]
+        if not self.cache:
+            prompt = preprocess(x, batch_size=batch_size, device=device)
+            codes = prompt[:, :-3]
+            self.cache = True
+        else:
+            prompt = x
+
         prompt_len = codes.shape[1]
+        input_codes = codes
         
-        
-        for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
-            logits = self(codes, with_preprocess=False, return_loss=False, with_postprocess=False)
-            next_token = sample(logits[:, -1])
-            if i < 3:
-                prompt[:, prompt_len + i , 3 - i:] = next_token[:, 3 - i:]
-                codes = prompt[: prompt_len + i + 1]
+        history = 0
+
+        for i in tqdm(range(max_len), initial=prompt_len, desc="Inference", total=max_len + prompt_len):
+            if self.use_generator:
+                logits = yield from self(input_codes, with_preprocess=False, return_loss=False, with_postprocess=False)
             else:
-                codes = torch.concat([codes, next_token[:, None]], 1)
+                logits = self(input_codes, with_preprocess=False, return_loss=False, with_postprocess=False)
+           
+            next_token = sample(logits[:, -1], top_k_val=top_k)
+
+            if not stream:
+                if i < 3:
+                    prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
+                    codes = prompt[:, :prompt_len + i + 1]
+                else:
+                    codes = torch.concat([codes, next_token[:, None]], 1)
+            input_codes = codes[:, -1:]
             
-        return postprocess(codes)
+        yield postprocess(codes) if last_chunk else codes
         
+            
+    def inference(self, x, **kwargs):
+        generator = self.yield_inference(x, **kwargs)
+        if self.use_generator:
+            return generator
+        else:
+            return next(generator)
 
     def load_compression_model(self):
         if self.compression_model is None:
@@ -135,17 +163,19 @@ class MusicGen(nn.Module):
 
 
 if __name__ == "__main__":
-    from shoelace.utils.encodec_utils import save_rvq
-    audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
+    
+    import numpy as np
+    # audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
     model = MusicGen(name="large", device=torch.device("cuda"))
     model.eval()
-    seq = model.load_from_audio(audio_path)
-    seq = seq[:, 50 * 10:15 * 50]
+    # seq = model.load_from_audio(audio_path)
+    seq = torch.from_numpy(np.load("encodes.npy")).cuda()
     print(seq.shape)
-    np.save("encodes.npy", seq.cpu().numpy())
+    # np.save("encodes.npy", seq.cpu().numpy())
     codes = model.inference(seq)
     print(codes.shape)
     print(codes[codes == 2048].sum())
+    from shoelace.utils.encodec_utils import save_rvq
     save_rvq(["test"], codes)
 
 

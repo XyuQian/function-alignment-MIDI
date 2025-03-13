@@ -122,9 +122,10 @@ class Shoelace(nn.Module):
             model_configs[model_names[1]]["adapter"] = None
 
         # Parse and store models' dictionaries.
-        self.model_dict = [parse_dict(model_configs[name], name) for name in model_names]
+        self.model_dict = model_dict
         self.models = models
         self.adapters = adapters
+        self.model_names = model_names
 
     def forward(self, args: dict) -> dict:
         """
@@ -138,46 +139,85 @@ class Shoelace(nn.Module):
             dict: Dictionary with computed loss (or outputs) for each model.
         """
         gen_dict = {}
+        model_names = self.model_names
+        model_dict = self.model_dict
+
         # Initialize generators for each model.
-        for model_info in self.model_dict:
-            model_name = model_info["name"]
+        for model_name in model_names:
             kwargs = args[model_name]
-            gen_dict[model_name] = model_info["model"](**kwargs)
+            gen_dict[model_name] = model_dict[model_name]["model"](**kwargs)
 
         # Determine maximum layers and layer skipping values.
-        max_n_layers = max(model_info["n_layers"] for model_info in self.model_dict)
-        layer_skips = [model_info["layer_skip"] for model_info in self.model_dict]
+        max_n_layers = max(model_dict[model_name]["n_layers"] for model_name in model_names)
+        layer_skips = {
+            model_name : model_dict[model_name]["layer_skip"] for model_name in model_names
+        }
+
+        main_model_name = model_names[0]
+        cond_model_name = model_names[1]
 
         # Iterate through layers and perform cross-attention when appropriate.
         for i in range(max_n_layers):
-            if i % layer_skips[0] == 0:
-                hidden_a = next(gen_dict[self.model_dict[0]["name"]])
-            if i % layer_skips[1] == 0:
-                hidden_b = next(gen_dict[self.model_dict[1]["name"]])
+            if i % layer_skips[main_model_name] == 0:
+                hidden_a = next(gen_dict[main_model_name])
+            if i % layer_skips[cond_model_name] == 0:
+                hidden_b = next(gen_dict[cond_model_name])
 
             if i == 0:
                 seq_len_a, seq_len_b, device = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
                 
             
-            if i % layer_skips[0] == 0 and self.model_dict[0]["adapter"]:
+            if i % layer_skips[main_model_name] == 0 and model_dict[main_model_name]["adapter"]:
                 mask, _ = create_mask(seq_len_a, seq_len_b, device)
-                adapt_output_a = self.model_dict[0]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0], mask)
+                adapt_output_a = model_dict[main_model_name]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0], mask)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 hidden_a[0]["attn_output"] = adapt_output_a
 
-            if i % layer_skips[1] == 0 and self.bi_direction and self.model_dict[1]["adapter"]:
+            if i % layer_skips[cond_model_name] == 0 and self.bi_direction and model_dict[1]["adapter"]:
                 mask, _ = create_mask(seq_len_b, seq_len_a, device)
-                adapt_output_b = self.model_dict[1]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1], mask)
+                adapt_output_b = model_dict[cond_model_name]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1], mask)
                 hidden_b[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
         if self.bi_direction:
             loss = {name: next(gen_dict[name]) for name in gen_dict}
         else:
-            primary_name = self.model_dict[0]["name"]
-            loss = {primary_name: next(gen_dict[primary_name])}
-
+            
+            loss = {main_model_name: next(gen_dict[main_model_name])}
         return sum([loss[k] for k in loss])
+
+
+
+    @torch.no_grad()
+    def inference(self, model_name:str, max_len:int, use_generator: bool, cond_model_name: str =None, **kwargs) -> dict:
+        
+        model_dict = self.model_dict
+        model_info = model_dict[model_name]
+        model = model_info["model"]
+        
+        model.set_use_generator(use_generator)
+        model_gen = model.inference(max_len=max_len, **kwargs)
+        if not use_generator:
+            return model_gen
+            
+        adapter = model_info["adapter"]
+        cond_model_cache = model_dict[cond_model_name]["model"].get_cache()
+        layer_skip_a = model_info["layer_skip"]
+        layer_skip_b = model_dict[cond_model_name]["layer_skip"]
+
+        for i in range(max_len):
+            for j in range(model_info["n_layers"]):
+                hidden_a = next(model_gen)
+
+                if j % layer_skip_a == 0:
+                    hidden_b = cond_model_cache[j // layer_skip_b]
+
+                    seq_len_a = hidden_a[0]["q"].shape[2]
+                    seq_len_b = hidden_b[0]["query"].shape[1]
+                    mask, _ = create_mask(seq_len_a, seq_len_b, device, ratio=-1)
+                    adapt_output = adapter(hidden_a[0], hidden_b[0], j // layer_skip_a, mask)
+                    hidden_a[0]["attn_output"] = adapt_output
+        return next(model_gen)
 
 
     def save_weights(self, model_folder: str):

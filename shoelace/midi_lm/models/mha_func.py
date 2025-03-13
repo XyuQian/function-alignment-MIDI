@@ -70,15 +70,14 @@ def multi_head_attention_forward(
         past_query = kv_cache.get("past_query")
         k = torch.concat([past_k, k], dim=2)
         v = torch.concat([past_v, v], dim=2)
-        past_q = torch.concat([past_q, q], dim=2)
         past_query = torch.concat([past_query, query], dim=1)
         
 
         kv_cache["past_k"] = k
         kv_cache["past_v"] = v
-        kv_cache["past_q"] = past_q
         kv_cache["past_query"] = past_query
 
+    if query.shape[1] == 1:
         is_causal = False
         attn_mask = None
 
@@ -95,7 +94,7 @@ def multi_head_attention_forward(
     if key_padding_mask is not None:
        
         assert key_padding_mask.shape == (batch_size, k.shape[2]), \
-            "key_padding_mask shape must match (batch_size, key_length)"
+            f"{key_padding_mask.shape} key_padding_mask shape must match (batch_size, key_length) ({batch_size}, {k.shape[2]})"
        
         key_padding_mask = key_padding_mask[:, None, None, :]
         key_padding_mask = key_padding_mask.masked_fill(key_padding_mask, float('-inf'))
@@ -113,7 +112,7 @@ def multi_head_attention_forward(
             wrap_attn_output = [{
                 "attn_output": attn_output,
                 "query": past_query,
-                "q": past_q
+                "q": q
             }]
         else:
             wrap_attn_output = [{
@@ -128,7 +127,6 @@ def multi_head_attention_forward(
     attn_output = attn_output.view(batch_size, tgt_len, attn_output.size(1))
     if not training and kv_cache is None:
         kv_cache = {
-            "past_q": q,
             "past_k": k,
             "past_v": v,
             "past_query": query

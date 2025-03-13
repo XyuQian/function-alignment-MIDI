@@ -196,8 +196,14 @@ class MIDILM(nn.Module):
         decoder_layer = TransformerEncoderLayer(d_model=embedding_dim, nhead=param["num_heads"], batch_first=True, use_generator=use_generator)
         self.transformer_decoder = TransformerEncoder(decoder_layer, num_layers=param["num_layers"], use_generator=use_generator)
         self.baby_llm = BabyLLM(**baby_param)
+        self.reset_cache()
+
+    def set_use_generator(self, flag: bool):
+        self.use_generator = flag
+        self.transformer_decoder.set_use_generator(flag)
 
     def reset_cache(self):
+        self.cache = False
         self.pos_encoding.reset_cache()
         self.transformer_decoder.reset_cache()
 
@@ -279,7 +285,7 @@ class MIDILM(nn.Module):
             return next(generator)
 
     @torch.no_grad()
-    def inference(self, x, max_len=512, top_k=32, temperature=1.0):
+    def yield_inference(self, x, max_len, last_chunk=True, top_k=32, temperature=1.0):
         """
         Performs inference by generating a sequence step-by-step.
         """
@@ -287,24 +293,38 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt_len = x.shape[1]
         prompt = x
-        self.reset_cache()
-        with_sos = True
-        for i in tqdm(range(max_len - prompt_len), desc="Inference", total=max_len - prompt_len):
-
-            decoder_output = self(prompt, return_memory=True, 
-                        return_loss=False, with_sos=with_sos)
-            with_sos = False
+        
+        print(x.shape[1], max_len, self.use_generator)
+        for _ in tqdm(range(max_len), initial=x.shape[1], desc="Inference", total=max_len + x.shape[1]):
+            if self.use_generator:
+                decoder_output = yield from self(prompt, return_memory=True, 
+                    return_loss=False, with_sos=not self.cache)
+            else:
+                decoder_output = self(prompt, return_memory=True, 
+                    return_loss=False, with_sos=not self.cache)
+            self.cache = True
             
             decoder_output = decoder_output[:, -1:]
             # print(decoder_output[0, 0, 100:300], "here")
             next_token = self.baby_llm.inference(memory=decoder_output,
-                                                 pre_token=decoded_sequence[-1],
-                                                 temperature=temperature, top_k=top_k)
+                                            pre_token=decoded_sequence[-1],
+                                            temperature=temperature, top_k=top_k)
             decoded_sequence.append(next_token[:, None])
             prompt = next_token[:, None]
+        yield torch.concat([x] + decoded_sequence[1:], 1)
+        
 
-        decoded_sequence[0] = x
-        return torch.concat(decoded_sequence, 1)
+
+    def inference(self, input_ids, **kwargs):
+        generator = self.yield_inference(input_ids, **kwargs)
+        if self.use_generator:
+            return generator
+        else:
+            return next(generator)
+
+    def get_cache(self):
+        return [self.transformer_decoder.get_cache()]
+
 
     def save_weights(self, model_path):
         """

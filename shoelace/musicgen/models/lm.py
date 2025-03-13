@@ -169,6 +169,9 @@ class LMModel(nn.Module):
     def init_qkv(self):
         self.transformer.init_qkv()
 
+    def reset_cache(self):
+        self.transformer.reset_cache()
+
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
         self.transformer.set_use_generator(flag)
@@ -222,12 +225,13 @@ class LMModel(nn.Module):
         else:
             x_cross = None
         out = yield from self.transformer(x, cross_src=x_cross)
+        
         if self.out_norm:
             out = self.out_norm(out)
 
         logits = torch.stack([self.linears[i](out) for i in range(K)], dim=-2)
         if self.fuser.fuse2cond['prepend']:
-            logits = logits[:, :, -S:]
+            logits = logits[:, -S:]
         return logits
 
     def _sample_next_token(

@@ -72,7 +72,10 @@ class BasicMultiheadAttention(nn.Module):
 
         # Out projection
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
+        self.kv_cache = None
 
+    def reset_cache(self):
+        self.kv_cache = None
 
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
@@ -125,6 +128,7 @@ class BasicMultiheadAttention(nn.Module):
         q = self.q_proj(query)
         k = self.k_proj(key)
         v = self.v_proj(value)
+        kv_cache = self.kv_cache
 
         # Reshape for multi-head [B, num_heads, T, head_dim]
         head_dim = C // self.num_heads
@@ -132,6 +136,26 @@ class BasicMultiheadAttention(nn.Module):
         k = rearrange(k, "b t (h d) -> b h t d", h=self.num_heads)
         v = rearrange(v, "b t (h d) -> b h t d", h=self.num_heads)
 
+        if not self.training and kv_cache:
+            past_k = kv_cache.get("past_k")
+            past_v = kv_cache.get("past_v")
+            past_q = kv_cache.get("past_q")
+            past_query = kv_cache.get("past_query")
+            k = torch.concat([past_k, k], dim=2)
+            v = torch.concat([past_v, v], dim=2)
+            past_q = torch.concat([past_q, q], dim=2)
+            past_query = torch.concat([past_query, query], dim=1)
+            
+            kv_cache["past_k"] = k
+            kv_cache["past_v"] = v
+            kv_cache["past_q"] = past_q
+            kv_cache["past_query"] = past_query
+
+        if not self.training and q.shape[2] == 1:
+            is_causal = False
+            attn_mask = None
+            
+        
         # Use PyTorch 2.0+ scaled_dot_product_attention
         # This automatically handles q scaling by sqrt(dim), so do NOT scale q yourself
         attn_output = F.scaled_dot_product_attention(
@@ -147,16 +171,32 @@ class BasicMultiheadAttention(nn.Module):
 
         # If generator logic is toggled on, yield partial states
         if self.use_generator:
-            wrap_attn_output = [{
-                "attn_output": x,
-                "query": query,
-                "q": q
-            }]
+            if not self.training and kv_cache is not None:
+                wrap_attn_output = [{
+                    "attn_output": x,
+                    "query": past_query,
+                    "q": past_q
+                }]
+            else:
+                wrap_attn_output = [{
+                    "attn_output": x,
+                    "query": query,
+                    "q": q
+                }]
             yield wrap_attn_output
             x = wrap_attn_output[0]["attn_output"]
 
         # Out projection
         x = self.out_proj(x)
+        if not self.training and kv_cache is None:
+            self.kv_cache = {
+                "past_q": q,
+                "past_k": k,
+                "past_v": v,
+                "past_query": query
+            }
+
+
         return x
 
 ###############################################################################
@@ -236,6 +276,8 @@ class TransformerEncoderLayer(nn.TransformerEncoderLayer):
         if self.cross_attention:
             self.cross_attention.init_qkv()
 
+    def reset_cache(self):
+        self.self_attn.reset_cache()
     
     def set_use_generator(self, flag: bool):
         self.self_attn.set_use_generator(flag)
@@ -332,6 +374,12 @@ class Transformer(nn.Module):
         for layer in self.layers:
             layer.init_qkv()
 
+    def reset_cache(self):
+        for layer in self.layers:
+            layer.reset_cache()
+        self.pos_cache = 0
+        
+
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
         for layer in self.layers:
@@ -369,9 +417,16 @@ class Transformer(nn.Module):
 
         # Optionally add sinusoidal embeddings
         if "sin" in self.positional_embedding:
-            positions = torch.arange(T, device=x.device).view(1, -1, 1)
+            if not self.training:
+                start_pos = self.pos_cache
+                positions = torch.arange(T + start_pos, device=x.device).view(1, -1, 1)
+                positions = positions[:, -T:]
+                self.pos_cache = T + start_pos
+            else:
+                positions = torch.arange(T, device=x.device).view(1, -1, 1)
             pos_emb = create_sin_embedding(positions, C, max_period=self.max_period, dtype=x.dtype)
             x = x + self.positional_scale * pos_emb
+            
 
         # Pass through each layer, potentially with gradient checkpointing
         for layer in self.layers:

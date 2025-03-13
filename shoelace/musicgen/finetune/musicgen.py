@@ -54,7 +54,7 @@ class MusicGenLora(nn.Module):
             lora_dropout=0.02,
         )
         # 5) Convert musicgen to a LoRA-enabled model
-        musicgen.prepare_for_lora()
+
         self.musicgen = get_peft_model(musicgen, lora_config)
         print_params(self)
 
@@ -66,7 +66,7 @@ class MusicGenLora(nn.Module):
         return self.musicgen(input_ids, **kwargs)
 
     def inference(self, x, **kwargs):
-        pass
+        return self.musicgen.inference(x, **kwargs)
 
     def save_weights(self, path: str):
         """

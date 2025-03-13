@@ -8,7 +8,7 @@ from shoelace.midi_lm.models.config import midi_lm_param, baby_param, PAD
 from shoelace.midi_lm.finetune.midi_lm import MIDILMLora
 
 device = "cuda"
-SEQ_LEN = 1024
+SEQ_LEN = 512
 
 
 def get_test_data():

@@ -56,6 +56,17 @@ class MultiheadAttention(Module):
             constant_(self.v_proj.bias, 0.0)
             constant_(self.out_proj.bias, 0.0)
 
+    def set_use_generator(self, flag: bool):
+        self.use_generator = flag
+
+
+    def get_cache(self):
+        return {
+            "q": self.kv_cache["q"],
+            "k": self.kv_cache["past_k"],
+            "v": self.kv_cache["past_v"],
+            "query": self.kv_cache["past_query"]
+        }
 
     def reset_cache(self):
         self.kv_cache = None
