@@ -62,6 +62,16 @@ class MIDILMLora(nn.Module):
         freeze(self.midi_lm.input_embedding, False)
         print_params(self)
 
+
+    def set_use_generator(self, flag: bool):
+        self.midi_lm.set_use_generator(flag)
+
+    def get_cache(self):
+        return self.midi_lm.get_cache()
+
+    def reset_cache(self):
+        self.midi_lm.reset_cache()
+
     def forward(self, input_ids, **kwargs):
         """
         Forward pass for the LoRA-wrapped model.
@@ -70,8 +80,8 @@ class MIDILMLora(nn.Module):
         
         return self.midi_lm(input_ids, **kwargs)
 
-    def inference(self, x, **kwargs):
-        return self.midi_lm.inference(x, **kwargs)
+    def inference(self, input_ids, **kwargs):
+        return self.midi_lm.inference(input_ids, **kwargs)
 
     def save_weights(self, path: str):
         """

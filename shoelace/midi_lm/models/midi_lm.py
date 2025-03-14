@@ -277,12 +277,7 @@ class MIDILM(nn.Module):
 
         
 
-    def forward(self, input_ids, **kwargs):
-        generator = self.yield_forward(input_ids, **kwargs)
-        if self.use_generator:
-            return generator
-        else:
-            return next(generator)
+    
 
     @torch.no_grad()
     def yield_inference(self, x, max_len, last_chunk=True, top_k=32, temperature=1.0):
@@ -291,17 +286,15 @@ class MIDILM(nn.Module):
         """
 
         decoded_sequence = [None]
-        prompt_len = x.shape[1]
         prompt = x
         
-        print(x.shape[1], max_len, self.use_generator)
         for _ in tqdm(range(max_len), initial=x.shape[1], desc="Inference", total=max_len + x.shape[1]):
             if self.use_generator:
                 decoder_output = yield from self(prompt, return_memory=True, 
-                    return_loss=False, with_sos=not self.cache)
+                    return_loss=False, with_sos=not self.cache, return_val=False)
             else:
                 decoder_output = self(prompt, return_memory=True, 
-                    return_loss=False, with_sos=not self.cache)
+                    return_loss=False, with_sos=not self.cache, return_val=True)
             self.cache = True
             
             decoder_output = decoder_output[:, -1:]
@@ -314,7 +307,15 @@ class MIDILM(nn.Module):
         yield torch.concat([x] + decoded_sequence[1:], 1)
         
 
+    def forward(self, input_ids, return_val=True, **kwargs):
+        generator = self.yield_forward(input_ids, **kwargs)
+        if self.use_generator:
+            return generator
+        elif return_val:
+            return next(generator)
+        return generator
 
+    @torch.no_grad()
     def inference(self, input_ids, **kwargs):
         generator = self.yield_inference(input_ids, **kwargs)
         if self.use_generator:
@@ -323,7 +324,7 @@ class MIDILM(nn.Module):
             return next(generator)
 
     def get_cache(self):
-        return [self.transformer_decoder.get_cache()]
+        return self.transformer_decoder.get_cache()
 
 
     def save_weights(self, model_path):

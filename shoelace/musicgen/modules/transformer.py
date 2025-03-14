@@ -77,6 +77,13 @@ class BasicMultiheadAttention(nn.Module):
     def reset_cache(self):
         self.kv_cache = None
 
+    def get_cache(self):
+        return {
+            "k": self.kv_cache["past_k"],
+            "v": self.kv_cache["past_v"],
+            "query": self.kv_cache["past_query"]
+        }
+
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
         
@@ -139,16 +146,15 @@ class BasicMultiheadAttention(nn.Module):
         if not self.training and kv_cache:
             past_k = kv_cache.get("past_k")
             past_v = kv_cache.get("past_v")
-            past_q = kv_cache.get("past_q")
+
             past_query = kv_cache.get("past_query")
             k = torch.concat([past_k, k], dim=2)
             v = torch.concat([past_v, v], dim=2)
-            past_q = torch.concat([past_q, q], dim=2)
+
             past_query = torch.concat([past_query, query], dim=1)
             
             kv_cache["past_k"] = k
             kv_cache["past_v"] = v
-            kv_cache["past_q"] = past_q
             kv_cache["past_query"] = past_query
 
         if not self.training and q.shape[2] == 1:
@@ -175,7 +181,7 @@ class BasicMultiheadAttention(nn.Module):
                 wrap_attn_output = [{
                     "attn_output": x,
                     "query": past_query,
-                    "q": past_q
+                    "q": q
                 }]
             else:
                 wrap_attn_output = [{
@@ -190,7 +196,6 @@ class BasicMultiheadAttention(nn.Module):
         x = self.out_proj(x)
         if not self.training and kv_cache is None:
             self.kv_cache = {
-                "past_q": q,
                 "past_k": k,
                 "past_v": v,
                 "past_query": query
@@ -278,6 +283,9 @@ class TransformerEncoderLayer(nn.TransformerEncoderLayer):
 
     def reset_cache(self):
         self.self_attn.reset_cache()
+
+    def get_cache(self):
+        return self.self_attn.get_cache()
     
     def set_use_generator(self, flag: bool):
         self.self_attn.set_use_generator(flag)
@@ -379,6 +387,8 @@ class Transformer(nn.Module):
             layer.reset_cache()
         self.pos_cache = 0
         
+    def get_cache(self):
+        return [layer.get_cache() for layer in self.layers]
 
     def set_use_generator(self, flag : bool):
         self.use_generator = flag

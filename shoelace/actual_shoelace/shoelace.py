@@ -39,7 +39,7 @@ def create_mask(a_len: int, b_len: int, device: torch.device, mask_ratio: float 
     return base_mask.to(device), mask_b.to(device)
 
 
-def parse_dict(model_config: dict, model_name: str) -> dict:
+def parse_dict(model_config: dict, model_names: str) -> dict:
     """
     Parse model configuration into a standardized dictionary.
 
@@ -52,11 +52,12 @@ def parse_dict(model_config: dict, model_name: str) -> dict:
               'layer_skip', and 'n_layers'.
     """
     return {
-        "name": model_name,
-        "model": model_config["model_obj"],
-        "adapter": model_config["adapter"],
-        "layer_skip": model_config["layer_skip"],
-        "n_layers": model_config["n_layers"]
+        model_name: {
+        "model": model_config[model_name]["model_obj"],
+        "adapter": model_config[model_name]["adapter"],
+        "layer_skip": model_config[model_name]["layer_skip"],
+        "n_layers": model_config[model_name]["n_layers"]
+        } for model_name in model_names
     }
 
 
@@ -78,7 +79,7 @@ class Shoelace(nn.Module):
 
         models = nn.ModuleList()
         adapters = nn.ModuleList()
-        model_dict = {}
+        
 
         # Initialize models and load weights.
         for key, config in model_configs.items():
@@ -122,10 +123,15 @@ class Shoelace(nn.Module):
             model_configs[model_names[1]]["adapter"] = None
 
         # Parse and store models' dictionaries.
-        self.model_dict = model_dict
+        
+        self.model_dict = parse_dict(model_configs, model_names)
         self.models = models
         self.adapters = adapters
         self.model_names = model_names
+
+    def reset_cache(self):
+        for model_name in self.model_dict:
+            self.model_dict[model_name]["model"].reset_cache()
 
     def forward(self, args: dict) -> dict:
         """
@@ -169,13 +175,15 @@ class Shoelace(nn.Module):
             
             if i % layer_skips[main_model_name] == 0 and model_dict[main_model_name]["adapter"]:
                 mask, _ = create_mask(seq_len_a, seq_len_b, device)
-                adapt_output_a = model_dict[main_model_name]["adapter"](hidden_a[0], hidden_b[0], i // layer_skips[0], mask)
+                adapt_output_a = model_dict[main_model_name]["adapter"](hidden_a[0], hidden_b[0], 
+                        i // layer_skips[cond_model_name], mask)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 hidden_a[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[cond_model_name] == 0 and self.bi_direction and model_dict[1]["adapter"]:
                 mask, _ = create_mask(seq_len_b, seq_len_a, device)
-                adapt_output_b = model_dict[cond_model_name]["adapter"](hidden_b[0], hidden_a[0], i // layer_skips[1], mask)
+                adapt_output_b = model_dict[cond_model_name]["adapter"](hidden_b[0], hidden_a[0], 
+                        i // layer_skips[main_model_name], mask)
                 hidden_b[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
@@ -208,16 +216,28 @@ class Shoelace(nn.Module):
         for i in range(max_len):
             for j in range(model_info["n_layers"]):
                 hidden_a = next(model_gen)
-
+                
                 if j % layer_skip_a == 0:
                     hidden_b = cond_model_cache[j // layer_skip_b]
 
                     seq_len_a = hidden_a[0]["q"].shape[2]
-                    seq_len_b = hidden_b[0]["query"].shape[1]
-                    mask, _ = create_mask(seq_len_a, seq_len_b, device, ratio=-1)
-                    adapt_output = adapter(hidden_a[0], hidden_b[0], j // layer_skip_a, mask)
+                    seq_len_b = hidden_b["query"].shape[1]
+                    mask, _ = create_mask(seq_len_a, seq_len_b, hidden_a[0]["q"].device, mask_ratio=-1)
+                    adapt_output = adapter(hidden_a[0], hidden_b, j // layer_skip_a, mask)
                     hidden_a[0]["attn_output"] = adapt_output
+            
         return next(model_gen)
+
+    def load_weights(self, model_folder):
+
+       
+        self.load_state_dict(torch.load(os.path.join(model_folder, "adapters.pth")), strict=False)
+        
+        model_dict = self.model_dict
+        for model_name in model_dict:
+            model = model_dict[model_name]["model"]
+            weights_folder = os.path.join(model_folder, model_name)
+            model.load_weights(weights_folder)
 
 
     def save_weights(self, model_folder: str):
@@ -230,9 +250,9 @@ class Shoelace(nn.Module):
             if not str.startswith(key, "adapters"):
                 state.pop(key)
         torch.save(state, os.path.join(model_folder, "adapters.pth"))
-        for model_info in self.model_dict:
-            model_name = model_info["name"]
-            model = model_info["model"]
+        model_dict = self.model_dict
+        for model_name in model_dict:
+            model = model_dict[model_name]["model"]
             weights_folder = os.path.join(model_folder, model_name)
             model.save_weights(weights_folder)
 

@@ -4,10 +4,12 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
-from shoelace.musicgen.finetune.config import MAX_DUR, FRAME_RATE
+from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.midi_lm.models.config import SEG_RES, PAD
 
 TOL_WIN = 3
+MAX_DUR = int(20.48*FRAME_RATE)
+TAIL_STEP = 512
 
 def load_data_lst(path_folder: str, validation: bool):
     """
@@ -152,14 +154,16 @@ class ShoelaceDataset(Dataset):
                 }
 
         audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + MAX_DUR]
-        midi_segment = self.cache_data[fname]["events"][midi_st : midi_ed]
+        events_len = len(self.cache_data[fname]["events"])
+        fake_ed = midi_ed + TAIL_STEP if midi_ed + TAIL_STEP < events_len else events_len
+        midi_segment = self.cache_data[fname]["events"][midi_st : fake_ed]
 
         if midi_prefix_ed > midi_prefix_st:
             prefix = self.cache_data[fname]["res_events"][midi_prefix_st : midi_prefix_ed]
             midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
         midi_segment[midi_segment < 0] = PAD
 
-        return audio_segment, midi_segment
+        return audio_segment, midi_segment, midi_ed
 
     def reset_random_seed(self, seed_base: int, epoch: int):
         """
@@ -188,7 +192,7 @@ def collate_fn(batch):
 
     arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
 
-    min_len = min(len(x[1]) for x in batch)
+    min_len = min([len(x[1]) for x in batch] + [x[2] for x in batch])
     midi_seq = [
         x[1][:min_len]
         for x in batch

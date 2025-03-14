@@ -58,6 +58,15 @@ class MusicGenLora(nn.Module):
         self.musicgen = get_peft_model(musicgen, lora_config)
         print_params(self)
 
+    def set_use_generator(self, flag: bool):
+        self.musicgen.set_use_generator(flag)
+
+    def get_cache(self):
+        return self.musicgen.get_cache()
+
+    def reset_cache(self):
+        self.musicgen.reset_cache()
+
     def forward(self, input_ids, **kwargs):
         """
         Forward pass for the LoRA-wrapped model.
@@ -65,8 +74,8 @@ class MusicGenLora(nn.Module):
         """
         return self.musicgen(input_ids, **kwargs)
 
-    def inference(self, x, **kwargs):
-        return self.musicgen.inference(x, **kwargs)
+    def inference(self, input_ids, **kwargs):
+        return self.musicgen.inference(input_ids, **kwargs)
 
     def save_weights(self, path: str):
         """

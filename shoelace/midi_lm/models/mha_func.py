@@ -66,7 +66,6 @@ def multi_head_attention_forward(
     if not training and kv_cache is not None:
         past_k = kv_cache.get("past_k")
         past_v = kv_cache.get("past_v")
-        past_q = kv_cache.get("past_q")
         past_query = kv_cache.get("past_query")
         k = torch.concat([past_k, k], dim=2)
         v = torch.concat([past_v, v], dim=2)
@@ -76,6 +75,7 @@ def multi_head_attention_forward(
         kv_cache["past_k"] = k
         kv_cache["past_v"] = v
         kv_cache["past_query"] = past_query
+
 
     if query.shape[1] == 1:
         is_causal = False

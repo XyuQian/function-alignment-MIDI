@@ -14,7 +14,7 @@ PAD = 2048
 
 def preprocess(x, batch_size=None, device=None):
     if x is None:
-        return torch.zeros(batch_size, 4, 4).to(device) + PAD
+        return torch.zeros(batch_size, 4, 4).to(device).long() + PAD
     outputs = []
     for i in range(4):
         outputs.append(F.pad(x[..., i], (i + 1, 3 - i), "constant", PAD))
@@ -38,8 +38,7 @@ class MusicGen(nn.Module):
         cache_dir = os.environ.get('MUSICGEN_ROOT', None)
 
         self.lm = load_lm_model(name, device=device, cache_dir=cache_dir)
-        self.lm.set_use_generator(use_generator)
-        self.use_generator = use_generator
+        self.set_use_generator(use_generator)
         if device.type == 'cpu':
             self.autocast = TorchAutocast(enabled=False)
         else:
@@ -61,14 +60,21 @@ class MusicGen(nn.Module):
         self.lm.reset_cache()
         self.cache = False
 
+    def set_use_generator(self, flag: bool):
+        self.use_generator = flag
+        self.lm.set_use_generator(flag)
+
+    def get_cache(self):
+        return self.lm.get_cache()
+
     def prepare_for_lora(self):
         self.lm.init_qkv()
 
     def postprocess(self, audio_seq):
         pass
 
-    def yield_forward(self, input_ids, with_preprocess=True,
-                      with_postprocess=True, return_loss=True, **kwargs):
+    def yield_forward(self, input_ids, return_loss=True, with_preprocess=True,
+                      with_postprocess=True, **kwargs):
         lm = self.lm
         x = preprocess(input_ids) if with_preprocess else input_ids
 
@@ -83,14 +89,8 @@ class MusicGen(nn.Module):
 
         if with_postprocess:
             pred = postprocess(pred)
-        yield pred
+        return pred
 
-    def forward(self, input_ids, **kwargs):
-        generator = self.yield_forward(input_ids, **kwargs)
-        if self.use_generator:
-            return generator
-        else:
-            return next(generator)
 
     @torch.no_grad()
     def yield_inference(self, x, batch_size=None, device=None, 
@@ -113,25 +113,36 @@ class MusicGen(nn.Module):
 
         for i in tqdm(range(max_len), initial=prompt_len, desc="Inference", total=max_len + prompt_len):
             if self.use_generator:
-                logits = yield from self(input_codes, with_preprocess=False, return_loss=False, with_postprocess=False)
+                logits = yield from self(input_codes, with_preprocess=False, 
+                return_loss=False, with_postprocess=False)
             else:
-                logits = self(input_codes, with_preprocess=False, return_loss=False, with_postprocess=False)
+                logits = self(input_codes, with_preprocess=False, return_loss=False, 
+                    with_postprocess=False)
            
             next_token = sample(logits[:, -1], top_k_val=top_k)
 
-            if not stream:
-                if i < 3:
-                    prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
-                    codes = prompt[:, :prompt_len + i + 1]
-                else:
-                    codes = torch.concat([codes, next_token[:, None]], 1)
+            
+            if i < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
+                prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
+                codes = prompt[:, :prompt_len + i + 1]
+            else:
+                codes = torch.concat([codes, next_token[:, None]], 1)
             input_codes = codes[:, -1:]
             
         yield postprocess(codes) if last_chunk else codes
         
             
-    def inference(self, x, **kwargs):
-        generator = self.yield_inference(x, **kwargs)
+    def forward(self, input_ids, return_val=True, **kwargs):
+        generator = self.yield_forward(input_ids, **kwargs)
+        if self.use_generator:
+            return generator
+        elif return_val:
+            return next(generator)
+        return generator
+
+    @torch.no_grad()
+    def inference(self, input_ids, **kwargs):
+        generator = self.yield_inference(input_ids, **kwargs)
         if self.use_generator:
             return generator
         else:
@@ -166,7 +177,7 @@ if __name__ == "__main__":
     
     import numpy as np
     # audio_path = "data/pop909_audio/004-Dear Friend/original.mp3"
-    model = MusicGen(name="large", device=torch.device("cuda"))
+    model = MusicGen(name="small", device=torch.device("cuda"))
     model.eval()
     # seq = model.load_from_audio(audio_path)
     seq = torch.from_numpy(np.load("encodes.npy")).cuda()

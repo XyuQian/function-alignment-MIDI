@@ -62,7 +62,6 @@ class MultiheadAttention(Module):
 
     def get_cache(self):
         return {
-            "q": self.kv_cache["q"],
             "k": self.kv_cache["past_k"],
             "v": self.kv_cache["past_v"],
             "query": self.kv_cache["past_query"]

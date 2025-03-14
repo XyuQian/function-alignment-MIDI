@@ -57,13 +57,14 @@ def evaluate(model, dataloader, e, i, device):
     logging.info("Starting evaluation...")
     dl = tqdm(dataloader, desc=f"Evaluate epoch {e} step {i}")
     for batch in dl:
-
+        model.reset_cache()
         loss = model(move_to_device(batch, device))
         total_loss += loss.item()
         num_batches += 1
 
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     logging.info(f"Evaluation complete. Average Loss: {avg_loss:.4f}")
+    model.train()
     return avg_loss
 
 
@@ -78,7 +79,7 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
 
         writer.add_scalar("eval/loss", eval_loss, step)
         logging.info(f"Epoch {e}, Step {i}: Eval Loss: {eval_loss:.4f}")
-        model.train()
+        
     return min_loss
 
 
@@ -95,7 +96,8 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
     logging.info(f"Training started for {epochs} epochs.")
 
     min_loss = float('inf')
-    eval_loss = 23
+
+    eval_loss = evaluate(model, val_dataloader, 0, "end", device)
     min_loss = save_model(model, writer, eval_loss, 0, model_dir, step, 0, 0, min_loss)
 
     for e in range(epochs):

@@ -9,27 +9,26 @@ MODEL_FACTORY = {
         "model": MusicGenLora,
         "kwargs": {
             "device": None,
-            "name": "large",
+            "name": "small",
             "r": 8,
             "lora_alpha": 16,
         },
         "layer_skip": 1,
-        "n_layers": 48,
+        "n_layers": 24,
         "low_rank_dim": 64,
-        "emb_dim": 2048,
-        "num_heads": 32,
+        "emb_dim": 1024,
+        "num_heads": 16,
         "steps": 16,
         "checkpoint_path": None
     },
     "MIDILM": {
         "model": MIDILMLora,
-        "n_layers": 48,
         "kwargs": {
             "r": 8,
             "lora_alpha": 16,
             "model_path": "save_models/midi_lm_0309.pth"
         },
-        "layer_skip": 6,
+        "layer_skip": 2,
         "n_layers": 12,
         "low_rank_dim": 64,
         "emb_dim": 1024,

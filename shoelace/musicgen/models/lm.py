@@ -175,7 +175,9 @@ class LMModel(nn.Module):
     def set_use_generator(self, flag : bool):
         self.use_generator = flag
         self.transformer.set_use_generator(flag)
-
+    
+    def get_cache(self):
+        return self.transformer.get_cache()
 
 
     def _init_weights(self, weight_init, depthwise_init, zero_bias_init):
