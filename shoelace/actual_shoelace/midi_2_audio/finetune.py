@@ -154,6 +154,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     
     model = Model(device=device, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+    model.load_weights("save_models/midi_2_audio_v1")
     model = model.to(device)
     model = DDP(model, [replica_id])
 
