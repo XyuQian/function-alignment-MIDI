@@ -100,7 +100,7 @@ class Shoelace(nn.Module):
                 model_instance.load_weights(config["checkpoint_path"])
             models.append(model_instance)
             config["model_obj"] = model_instance
-
+            
             # Freeze all models except the primary one when not in bidirectional mode.
             if not bi_direction and key != model_names[0]:
                 freeze(model_instance)
@@ -202,8 +202,9 @@ class Shoelace(nn.Module):
                 
             
             if i % layer_skips[main_model_name] == 0 and main_adapter:
+                
                 mask, _ = create_mask(main_seq_len, cond_seq_len, n_prompts[0], device)
-                adapt_output_a = main_adapter(layer_idx=i // layer_skips[cond_model_name],
+                adapt_output_a = main_adapter(layer_idx=i // layer_skips[main_model_name],
                                                 hidden_a=main_hidden[0], 
                                                 hidden_b=cond_hidden[0], 
                                                 indices_a=main_indices,
@@ -214,7 +215,7 @@ class Shoelace(nn.Module):
 
             if i % layer_skips[cond_model_name] == 0 and self.bi_direction and cond_adapter:
                 mask, _ = create_mask(cond_seq_len, main_seq_len, n_prompts[1], device)
-                adapt_output_b = cond_adapter(layer_idx=i // layer_skips[main_model_name],
+                adapt_output_b = cond_adapter(layer_idx=i // layer_skips[cond_model_name],
                                                 hidden_a=cond_hidden[0], 
                                                 hidden_b=main_hidden[0],
                                                 indices_a=cond_indices,
