@@ -56,7 +56,7 @@ def evaluate(model, dataloader, e, i, device):
     logging.info("Starting evaluation...")
     dl = tqdm(dataloader, desc=f"Evaluate epoch {e} step {i}")
     for batch in dl:
-        model.clean_cache()
+        model.reset_cache()
         loss = model(**move_to_device(batch, device))
         total_loss += loss.item()
         num_batches += 1
@@ -144,6 +144,7 @@ def main(args):
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
     model = Model(model_path="save_models/midi_lm.pth")
+    model.load_weights("save_models/piano_lm_v1")
     dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,

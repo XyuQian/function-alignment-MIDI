@@ -145,6 +145,8 @@ class Shoelace(nn.Module):
         self.adapters = adapters
         self.model_names = model_names
 
+        print_params(self)
+
     def reset_cache(self):
         for model_name in self.model_dict:
             self.model_dict[model_name]["model"].reset_cache()

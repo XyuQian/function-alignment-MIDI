@@ -1,8 +1,8 @@
 lr=1e-4
 exp=exp
 batch_size=20
-e=30
-exp_dir=midi_lm_piano_cover
+e=20
+exp_dir=midi_lm_piano_cover_v2
 
 python -m shoelace.midi_lm.finetune.finetune_single_gpu \
       --learning_rate=$lr \
