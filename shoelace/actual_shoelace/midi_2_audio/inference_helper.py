@@ -1,4 +1,7 @@
 import torch
+from shoelace.utils.network_utils import transform_inputs
+from shoelace.midi_lm.models.config import SEG_RES
+import torch.nn.functional as F
 
 class InferenceHelper:
     def __init__(self, model_folder):
@@ -8,8 +11,17 @@ class InferenceHelper:
         self.model.load_weights(model_folder)
         self.model.cuda().eval()
 
-    def inference(self, input_ids, max_len, top_k=150):
+    def inference(self, input_ids, max_len, top_k=100):
         
+        midi_index = transform_inputs(input_ids[..., 0], SEG_RES).unsqueeze(-1).long()
+        midi_index = F.pad(midi_index, (0, 0, 1, 0), "constant", 0)
+        x = torch.arange(max_len + 5).unsqueeze(0).long().to(input_ids.device)
+        audio_index = torch.stack([F.pad(x, (i + 1, 3 - i), "constant", 0) for i in range(4)], -1)
+
+
+        midi_index = midi_index[..., 0]
+        audio_index = x
+
         self.model.inference(model_name="MIDILM", max_len=1,
                             use_generator=False, top_k=16, 
                             last_chunk=True, input_ids=input_ids)
@@ -18,7 +30,8 @@ class InferenceHelper:
         audio_codes = self.model.inference(model_name="AudioLM", 
                             cond_model_name="MIDILM", max_len=max_len,
                             use_generator=True, top_k=top_k, 
-                            last_chunk=True, input_ids=None,
+                            last_chunk=True, input_ids=None, cond_indices=midi_index,
+                            main_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
         return audio_codes
 

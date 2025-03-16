@@ -4,12 +4,16 @@ import h5py
 import torch
 from torch.utils.data import Dataset
 from tqdm import tqdm
+import torch.nn.functional as F
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.midi_lm.models.config import SEG_RES, PAD
+from shoelace.utils.network_utils import transform_inputs
 
-TOL_WIN = 3
-MAX_DUR = int(20.48*FRAME_RATE)
+TOL_WIN = 0
+MAX_DUR = int(15.36*FRAME_RATE)
 TAIL_STEP = 512
+
+
 
 def load_data_lst(path_folder: str, validation: bool):
     """
@@ -163,7 +167,7 @@ class ShoelaceDataset(Dataset):
             midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
         midi_segment[midi_segment < 0] = PAD
 
-        return audio_segment, midi_segment, midi_ed
+        return audio_segment, midi_segment, midi_ed - midi_st
 
     def reset_random_seed(self, seed_base: int, epoch: int):
         """
@@ -192,19 +196,29 @@ def collate_fn(batch):
 
     arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
 
-    min_len = min([len(x[1]) for x in batch] + [x[2] for x in batch])
+    max_len = max([x[2] for x in batch])
+    min_len = min([len(x[1]) for x in batch] + [max_len])
     midi_seq = [
         x[1][:min_len]
         for x in batch
     ]
     midi_data = torch.from_numpy(np.stack(midi_seq, axis=0)).long()
 
+    midi_index = transform_inputs(midi_data[..., 0], SEG_RES).long()
+    midi_index = F.pad(midi_index[:, :-1], (1, 0), "constant", 0)
+    x = torch.arange(len(audio_data[0]) + 3).long().unsqueeze(0)
+    
+    # audio_index = torch.stack([F.pad(x, (i + 1, 3 - i), "constant", 0) for i in range(4)], -1)
+    audio_index = F.pad(x, (1, 0), "constant", 0)
+
     return {
         "AudioLM": {
-                "input_ids": audio_data
+                "args": {"input_ids": audio_data},
+                "indices": audio_index
             },
         "MIDILM": {
-                "input_ids": midi_data
+                "args": {"input_ids": midi_data},
+                "indices": midi_index
             }
         }
             

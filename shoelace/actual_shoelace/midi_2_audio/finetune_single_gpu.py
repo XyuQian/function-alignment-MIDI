@@ -45,7 +45,10 @@ def get_dataset(rid, batch_size, validation=False):
     return dataset, dataloader
 
 def move_to_device(batch, dev):
-    return {k : {v: batch[k][v].to(dev) for v in batch[k]} for k in batch}
+    if isinstance(batch, dict):
+        return {k : move_to_device(batch[k], dev) for k in batch}
+    return batch.to(dev)
+    
     
 
 @torch.no_grad()
@@ -147,6 +150,7 @@ def main(args):
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
     model = Model(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+    model.load_weights("save_models/midi_2_audio_v1")
     dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,

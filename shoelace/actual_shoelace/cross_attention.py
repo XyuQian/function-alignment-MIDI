@@ -2,6 +2,16 @@ import torch
 import torch.nn as nn
 import math
 import torch.nn.functional as F
+from einops import rearrange
+
+
+def get_pe(d_model, max_len=10000):
+    position = torch.arange(max_len, dtype=torch.float).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) * (-math.log(10000.0) / d_model))
+    pe = torch.zeros(max_len, d_model)
+    pe[:, 0::2] = torch.sin(position * div_term)
+    pe[:, 1::2] = torch.cos(position * div_term)
+    return pe
 
 
 def init_weights_A(layer: nn.Module):
@@ -14,47 +24,60 @@ def init_weights_B(layer: nn.Module):
         nn.init.constant_(layer.bias, 1)
 
 
-class PositionalEncoding(nn.Module):
-    def __init__(self, d_model: int, max_len: int = 4097):
-        super().__init__()
-        position = torch.arange(max_len, dtype=torch.float).unsqueeze(1)
-        div_term = torch.exp(torch.arange(0, d_model, 2, dtype=torch.float) * (-math.log(10000.0) / d_model))
-        pe = torch.zeros(max_len, d_model)
-        pe[:, 0::2] = torch.sin(position * div_term)
-        pe[:, 1::2] = torch.cos(position * div_term)
-        self.register_buffer("r_pos", pe.unsqueeze(0))
+def create_low_rank_mlp(in_dim: int, low_rank_dim: int, out_dim: int):
+    return nn.Sequential(
+        nn.Linear(in_dim, low_rank_dim, bias=False),
+        nn.Linear(low_rank_dim, out_dim, bias=False)
+    )
 
-    def forward(self, x_len: int, index=None):
-        if index is None:
-            return self.r_pos[:, :x_len, :]
-        return self.r_pos.squeeze(0)[index[..., 0]]
+class PositionalEncoding(nn.Module):
+    def __init__(self, low_rank_dim: int, d_model: int, n_indices: int, max_len: int = 15000):
+        super().__init__()
+        
+        self.n_indices = n_indices
+
+        self.pos_linear = nn.ModuleList([create_low_rank_mlp(d_model, low_rank_dim, d_model) for _ in range(n_indices)])
+        
+
+    def forward(self, pe, index):
+        inputs = [pe[index[..., i]] for i in range(self.n_indices)]
+        return sum([self.pos_linear[i](x) for i, x in enumerate(inputs)])
 
 
 class LowRankMultiheadAttention(nn.Module):
-    def __init__(self, in_dim: int, out_dim: int, num_heads: int, low_rank_dim: int = 64, dropout: float = 0.1):
+    def __init__(self, in_dim: int, out_dim: int, 
+            num_heads: int, 
+            low_rank_dim: int = 64, 
+            n_in_indices: int = 1,
+            n_out_indices: int = 1,
+            n_prompts: int = 5,
+            dropout: float = 0.1):
         super().__init__()
         self.num_heads = num_heads
         self.head_dim = out_dim // num_heads
         self.embed_dim = out_dim
         self.dropout = nn.Dropout(dropout)
 
-        self.k_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
-        self.v_linear = self._create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
-        # self.q_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
-        # self.k_pos_linear = self._create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
+        self.k_linear = create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
+        self.v_linear = create_low_rank_mlp(in_dim, low_rank_dim, out_dim)
+        # self.q_pos_linear = PositionalEncoding(low_rank_dim=low_rank_dim,
+        #                                         d_model=out_dim,
+        #                                         n_indices=n_out_indices)
+        # self.k_pos_linear = PositionalEncoding(low_rank_dim=low_rank_dim,
+        #                                         d_model=out_dim,
+        #                                         n_indices=n_in_indices)
 
-        self.prompt = nn.Parameter(torch.randn(1, 1, in_dim), requires_grad=True)
-        self.gate = nn.Parameter(torch.zeros(1), requires_grad=True)
-        # self.pos_encoding = PositionalEncoding(d_model=out_dim)
+        self.k_pos_linear =  create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
+        self.q_pos_linear =  create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
 
-    @staticmethod
-    def _create_low_rank_mlp(in_dim: int, low_rank_dim: int, out_dim: int):
-        return nn.Sequential(
-            nn.Linear(in_dim, low_rank_dim, bias=False),
-            nn.Linear(low_rank_dim, out_dim, bias=False)
-        )
 
-    def forward(self, hidden_a, hidden_b, attn_mask):
+        self.prompt = nn.Parameter(torch.randn(1, n_prompts, in_dim), requires_grad=True)
+        self.gates = nn.Parameter(torch.zeros(1), requires_grad=True)
+
+
+    
+
+    def forward(self, pe, hidden_a, hidden_b, indices_a, indices_b, attn_mask):
         vanilla_attn_output = hidden_a["attn_output"]
 
         q = hidden_a["q"]
@@ -62,23 +85,22 @@ class LowRankMultiheadAttention(nn.Module):
         kv_x = hidden_b["query"]
 
         q_len, kv_len = q.shape[2], kv_x.shape[1]
-
+        
         prompt = self.prompt.repeat(len(kv_x), 1, 1)
+
+        key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
+        
         kv_x = torch.concat([prompt, kv_x], 1)
 
-        key = self.k_linear(kv_x)
+        
+        key = self.k_linear(kv_x)  + self.k_pos_linear(key_pos)
         value = self.v_linear(kv_x)
-
+        
+        q_pos = self.q_pos_linear(pe[indices_a])
+        q = q + rearrange(q_pos, "b t (h d) -> b h t d", h=self.num_heads)
         attn_output = self.compute_attention(q, key, value, attn_mask)
 
-
-        # q = q.transpose(1, 2).reshape(q.shape[0], q_len, -1) + self.q_pos_linear(self.pos_encoding(q_len, pos_a))
-        # kv_x = torch.cat([self.prompt.repeat(len(kv_x), 1, 1), kv_x], dim=1)
-        # kv_pos = F.pad(self.pos_encoding(kv_len, pos_b), (0, 0, 1, 0))
-
-        # key = self.k_linear(kv_x) + self.k_pos_linear(kv_pos)
-        # value = self.v_linear(kv_x)
-        return attn_output * self.gate + vanilla_attn_output
+        return attn_output * self.gates + vanilla_attn_output
 
     def compute_attention(self, q, key, value, attn_mask):
         batch_size, kv_len = key.shape[0], key.shape[1]
@@ -95,12 +117,13 @@ class LowRankMultiheadAttention(nn.Module):
 
 
 class SholaceParam(nn.Module):
-    def __init__(self, n_layers, in_dim, out_dim, num_heads,
-                 low_rank_dim):
+    def __init__(self, n_layers, out_dim, **kwargs):
         super().__init__()
+        self.register_buffer("pe", get_pe(out_dim))
         self.cross_attn = nn.ModuleList([
-            LowRankMultiheadAttention(in_dim, out_dim, num_heads, low_rank_dim)
+            LowRankMultiheadAttention(out_dim=out_dim, **kwargs)
             for _ in range(n_layers)])
+        
 
-    def forward(self, hidden_a, hidden_b, layer_idx, attn_mask=None):
-        return self.cross_attn[layer_idx](hidden_a, hidden_b, attn_mask)
+    def forward(self, layer_idx, **kwargs):
+        return self.cross_attn[layer_idx](pe=self.pe, **kwargs)

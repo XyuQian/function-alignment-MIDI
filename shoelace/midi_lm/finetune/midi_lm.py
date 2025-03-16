@@ -28,7 +28,7 @@ class MIDILMLora(nn.Module):
     A wrapper around MusicGen that applies LoRA to the transformer layers.
     """
 
-    def __init__(self, model_path, r=8, lora_alpha=16, use_generator=False):
+    def __init__(self, model_path, r=32, lora_alpha=64, use_generator=False):
         super().__init__()
         # 1) Initialize base MusicGen model on the specified device
         from ..models.config import baby_param, midi_lm_param
@@ -57,20 +57,19 @@ class MIDILMLora(nn.Module):
             target_modules=target_modules,
             lora_dropout=0.02,
         )
-        self.midi_lm = get_peft_model(midi_lm, lora_config)
-        freeze(self.midi_lm.baby_llm, False)
-        freeze(self.midi_lm.input_embedding, False)
+        self.lm = get_peft_model(midi_lm, lora_config)
+        freeze(self.lm.baby_llm, False)
         print_params(self)
 
 
     def set_use_generator(self, flag: bool):
-        self.midi_lm.set_use_generator(flag)
+        self.lm.set_use_generator(flag)
 
     def get_cache(self):
-        return self.midi_lm.get_cache()
+        return self.lm.get_cache()
 
     def reset_cache(self):
-        self.midi_lm.reset_cache()
+        self.lm.reset_cache()
 
     def forward(self, input_ids, **kwargs):
         """
@@ -78,30 +77,30 @@ class MIDILMLora(nn.Module):
         Adjust as needed for your LM signature.
         """
         
-        return self.midi_lm(input_ids, **kwargs)
+        return self.lm(input_ids, **kwargs)
 
     def inference(self, input_ids, **kwargs):
-        return self.midi_lm.inference(input_ids, **kwargs)
+        return self.lm.inference(input_ids, **kwargs)
 
     def save_weights(self, path: str):
         """
         Saves only LoRA-related parameters.
         """
-        state = self.midi_lm.state_dict()
+        state = self.state_dict()
         os.makedirs(path, exist_ok=True)
         for key in list(state.keys()):
-            if "lora_A" not in key and "lora_B" not in key and "input_embedding" not in key:
+            if "lora_A" not in key and "lora_B" not in key:
                 state.pop(key)
-        torch.save(state, os.path.join(path, "lora_with_emb.pth"))
-        torch.save(self.midi_lm.baby_llm.state_dict(), os.path.join(path, "baby_llm.pth"))
+        torch.save(state, os.path.join(path, "lora.pth"))
+        torch.save(self.lm.baby_llm.state_dict(), os.path.join(path, "baby_llm.pth"))
         print(f"LoRA weights saved to: {path}.lora.pth")
 
     def load_weights(self, path: str):
         """
         Loads LoRA-only weights from saved .lora.pth file.
         """
-        lora_path = os.path.join(path, "lora_with_emb.pth")
+        lora_path = os.path.join(path, "lora.pth")
         baby_path = os.path.join(path, "baby_llm.pth")
-        self.midi_lm.load_state_dict(torch.load(lora_path, map_location="cpu"), strict=False)
-        self.midi_lm.baby_llm.load_state_dict(torch.load(baby_path, map_location="cpu"))
+        self.load_state_dict(torch.load(lora_path, map_location="cpu"), strict=False)
+        self.lm.baby_llm.load_state_dict(torch.load(baby_path, map_location="cpu"))
         print(f"LoRA weights loaded from: {path}")

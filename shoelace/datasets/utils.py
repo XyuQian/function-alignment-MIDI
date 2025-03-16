@@ -4,8 +4,10 @@ import numpy as np
 import pretty_midi
 from shoelace.datasets.preprocess_midi import load_midi, SEG_RES, RES_EVENT
 from shoelace.midi_lm.models.config import PAD
+TAIL_LEN = 256
 
-def get_test_data(seq_len):
+
+def get_test_data(sec_len):
     """Loads test MIDI data for inference."""
     paths = [
         "data/POP909/909/909.mid",
@@ -24,15 +26,15 @@ def get_test_data(seq_len):
 
         start_idx = 0
         event_start = sos[start_idx]
-        event_end = min(event_start + seq_len, len(events))
-        event = events[event_start:event_end]
+        event_end = sos[start_idx + int(sec_len//SEG_RES) + 1]
+        event = events[event_start:event_end + TAIL_LEN]
 
         event[event < 0] = PAD
-        if len(event) < seq_len:
-            event = np.pad(event, ((0, seq_len - len(event)), (0, 0)), "constant", constant_values=(PAD, PAD))
-
-        sequences.append(event)
-
+        
+        sequences.append([event, event_end - event_start])
+    max_len = max([x[1] for x in sequences])
+    sequences = [x[0][:max_len] for x in sequences]
+    
     return torch.from_numpy(np.stack(sequences, axis=0)), len(sequences)
 
 

@@ -8,7 +8,16 @@ from shoelace.utils.network_utils import freeze, print_params
 from .cross_attention import SholaceParam
 
 
-def create_mask(a_len: int, b_len: int, device: torch.device, mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
+def reformat(state):
+    res = {}
+    for key in state:
+        k = str.replace(key, "0.0", "adapters.0")
+        res[k] = state[key]
+    return res
+
+
+def create_mask(a_len: int, b_len: int, n_prompts: int, device: torch.device, 
+            mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
     """
     Create causal-like masks for cross attention between two sequences.
 
@@ -31,10 +40,10 @@ def create_mask(a_len: int, b_len: int, device: torch.device, mask_ratio: float 
 
     # Create the reverse mask and shift values to block attention.
     mask_b = base_mask.transpose(0, 1).clone() + float('-inf')
-
+    
     # Pad the masks to account for "no mask" or "CLS" positions.
-    base_mask = F.pad(base_mask, (1, 0), "constant", 0)
-    mask_b = F.pad(mask_b, (1, 0), "constant", 0)
+    base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
+    # mask_b = F.pad(mask_b, (1, 0), "constant", 0)
 
     return base_mask.to(device), mask_b.to(device)
 
@@ -56,7 +65,8 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
         "model": model_config[model_name]["model_obj"],
         "adapter": model_config[model_name]["adapter"],
         "layer_skip": model_config[model_name]["layer_skip"],
-        "n_layers": model_config[model_name]["n_layers"]
+        "n_layers": model_config[model_name]["n_layers"],
+        "n_prompts": model_config[model_name]["n_prompts"],
         } for model_name in model_names
     }
 
@@ -103,7 +113,10 @@ class Shoelace(nn.Module):
             in_dim=model_configs[model_names[1]]["emb_dim"],
             low_rank_dim=model_configs[model_names[0]]["low_rank_dim"],
             out_dim=model_configs[model_names[0]]["emb_dim"],
-            num_heads=model_configs[model_names[0]]["num_heads"]
+            num_heads=model_configs[model_names[0]]["num_heads"],
+            n_out_indices=model_configs[model_names[0]]["n_indices"],
+            n_in_indices=model_configs[model_names[1]]["n_indices"],
+            n_prompts=model_configs[model_names[0]]["n_prompts"]
         )
         adapters.append(adapter_a)
         model_configs[model_names[0]]["adapter"] = adapter_a
@@ -115,7 +128,10 @@ class Shoelace(nn.Module):
                 in_dim=model_configs[model_names[0]]["emb_dim"],
                 low_rank_dim=model_configs[model_names[1]]["low_rank_dim"],
                 out_dim=model_configs[model_names[1]]["emb_dim"],
-                num_heads=model_configs[model_names[1]]["num_heads"]
+                num_heads=model_configs[model_names[1]]["num_heads"],
+                n_out_indices=model_configs[model_names[1]]["n_indices"],
+                n_in_indices=model_configs[model_names[0]]["n_indices"],
+                n_prompts=model_configs[model_names[1]]["n_prompts"]
             )
             adapters.append(adapter_b)
             model_configs[model_names[1]]["adapter"] = adapter_b
@@ -150,7 +166,7 @@ class Shoelace(nn.Module):
 
         # Initialize generators for each model.
         for model_name in model_names:
-            kwargs = args[model_name]
+            kwargs = args[model_name]["args"]
             gen_dict[model_name] = model_dict[model_name]["model"](**kwargs)
 
         # Determine maximum layers and layer skipping values.
@@ -162,29 +178,47 @@ class Shoelace(nn.Module):
         main_model_name = model_names[0]
         cond_model_name = model_names[1]
 
+        main_adapter = model_dict[main_model_name]["adapter"]
+        cond_adapter = model_dict[cond_model_name]["adapter"]
+
+        main_indices = args[main_model_name]["indices"]
+        cond_indices = args[cond_model_name]["indices"]
+
+
+        n_prompts = [model_dict[model_name]["n_prompts"] for model_name in [main_model_name, cond_model_name]]
+
         # Iterate through layers and perform cross-attention when appropriate.
         for i in range(max_n_layers):
             if i % layer_skips[main_model_name] == 0:
-                hidden_a = next(gen_dict[main_model_name])
+                main_hidden = next(gen_dict[main_model_name])
             if i % layer_skips[cond_model_name] == 0:
-                hidden_b = next(gen_dict[cond_model_name])
+                cond_hidden = next(gen_dict[cond_model_name])
 
             if i == 0:
-                seq_len_a, seq_len_b, device = hidden_a[0]["query"].shape[1], hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
+                main_seq_len, cond_seq_len, device = main_hidden[0]["query"].shape[1], \
+                    cond_hidden[0]["query"].shape[1], main_hidden[0]["query"].device
                 
             
-            if i % layer_skips[main_model_name] == 0 and model_dict[main_model_name]["adapter"]:
-                mask, _ = create_mask(seq_len_a, seq_len_b, device)
-                adapt_output_a = model_dict[main_model_name]["adapter"](hidden_a[0], hidden_b[0], 
-                        i // layer_skips[cond_model_name], mask)
+            if i % layer_skips[main_model_name] == 0 and main_adapter:
+                mask, _ = create_mask(main_seq_len, cond_seq_len, n_prompts[0], device)
+                adapt_output_a = main_adapter(layer_idx=i // layer_skips[cond_model_name],
+                                                hidden_a=main_hidden[0], 
+                                                hidden_b=cond_hidden[0], 
+                                                indices_a=main_indices,
+                                                indices_b=cond_indices,
+                                                attn_mask=mask)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
-                hidden_a[0]["attn_output"] = adapt_output_a
+                main_hidden[0]["attn_output"] = adapt_output_a
 
-            if i % layer_skips[cond_model_name] == 0 and self.bi_direction and model_dict[1]["adapter"]:
-                mask, _ = create_mask(seq_len_b, seq_len_a, device)
-                adapt_output_b = model_dict[cond_model_name]["adapter"](hidden_b[0], hidden_a[0], 
-                        i // layer_skips[main_model_name], mask)
-                hidden_b[0]["attn_output"] = adapt_output_b
+            if i % layer_skips[cond_model_name] == 0 and self.bi_direction and cond_adapter:
+                mask, _ = create_mask(cond_seq_len, main_seq_len, n_prompts[1], device)
+                adapt_output_b = cond_adapter(layer_idx=i // layer_skips[main_model_name],
+                                                hidden_a=cond_hidden[0], 
+                                                hidden_b=main_hidden[0],
+                                                indices_a=cond_indices,
+                                                indices_b=main_indices,
+                                                attn_mask=mask)
+                cond_hidden[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
         if self.bi_direction:
@@ -197,7 +231,10 @@ class Shoelace(nn.Module):
 
 
     @torch.no_grad()
-    def inference(self, model_name:str, max_len:int, use_generator: bool, cond_model_name: str =None, **kwargs) -> dict:
+    def inference(self, model_name:str, max_len:int, 
+                    use_generator: bool, cond_model_name: str =None, 
+                    cond_indices: torch.Tensor=None, 
+                    main_indices: torch.Tensor=None, **kwargs) -> dict:
         
         model_dict = self.model_dict
         model_info = model_dict[model_name]
@@ -210,28 +247,35 @@ class Shoelace(nn.Module):
             
         adapter = model_info["adapter"]
         cond_model_cache = model_dict[cond_model_name]["model"].get_cache()
-        layer_skip_a = model_info["layer_skip"]
-        layer_skip_b = model_dict[cond_model_name]["layer_skip"]
+        layer_skip = model_info["layer_skip"]
+        n_prompts = model_info["n_prompts"]
+        cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
 
         for i in range(max_len):
             for j in range(model_info["n_layers"]):
                 hidden_a = next(model_gen)
                 
-                if j % layer_skip_a == 0:
-                    hidden_b = cond_model_cache[j // layer_skip_b]
+                if j % layer_skip == 0:
+                    hidden_b = cond_model_cache[j // cond_layer_skip]
 
                     seq_len_a = hidden_a[0]["q"].shape[2]
                     seq_len_b = hidden_b["query"].shape[1]
-                    mask, _ = create_mask(seq_len_a, seq_len_b, hidden_a[0]["q"].device, mask_ratio=-1)
-                    adapt_output = adapter(hidden_a[0], hidden_b, j // layer_skip_a, mask)
+                    mask, _ = create_mask(seq_len_a, seq_len_b, n_prompts, hidden_a[0]["q"].device, mask_ratio=-1)
+                    adapt_output = adapter(
+                        layer_idx=j // layer_skip,
+                                                hidden_a=hidden_a[0], 
+                                                hidden_b=hidden_b,
+                                                indices_a=main_indices[:, i : i + 1],
+                                                indices_b=cond_indices,
+                                                attn_mask=None)
                     hidden_a[0]["attn_output"] = adapt_output
             
         return next(model_gen)
 
     def load_weights(self, model_folder):
+        state = reformat(torch.load(os.path.join(model_folder, "adapters.pth")))
 
-       
-        self.load_state_dict(torch.load(os.path.join(model_folder, "adapters.pth")), strict=False)
+        self.load_state_dict(state, strict=False)
         
         model_dict = self.model_dict
         for model_name in model_dict:

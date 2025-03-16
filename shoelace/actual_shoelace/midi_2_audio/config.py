@@ -9,32 +9,36 @@ MODEL_FACTORY = {
         "model": MusicGenLora,
         "kwargs": {
             "device": None,
-            "name": "small",
-            "r": 8,
-            "lora_alpha": 16,
+            "name": "large",
+            "r": 32,
+            "lora_alpha": 64,
         },
+        "n_prompts": 1,
+        "n_indices": 4,
         "layer_skip": 1,
-        "n_layers": 24,
+        "n_layers": 48,
         "low_rank_dim": 64,
-        "emb_dim": 1024,
-        "num_heads": 16,
+        "emb_dim": 2048,
+        "num_heads": 32,
         "steps": 16,
         "checkpoint_path": None
     },
     "MIDILM": {
         "model": MIDILMLora,
         "kwargs": {
-            "r": 8,
-            "lora_alpha": 16,
+            "r": 32,
+            "lora_alpha": 64,
             "model_path": "save_models/midi_lm_0309.pth"
         },
-        "layer_skip": 2,
+        "n_prompts": 1,
+        "n_indices": 1,
+        "layer_skip": 4,
         "n_layers": 12,
         "low_rank_dim": 64,
         "emb_dim": 1024,
         "num_heads": 8,
         "steps": 1,
         "seq_len": 0,
-        "checkpoint_path": "save_models/midi_lm_piano_cover"
+        "checkpoint_path": "save_models/piano_lm_v1"
     },
 }

@@ -7,6 +7,18 @@ from ..models.musicgen import MusicGen
 from shoelace.utils.network_utils import print_params
 
 
+
+def reformat(state):
+    res = {}
+    for key in state:
+        if str.startswith(key, "lm.base_model.model.transformer"):
+            k = str.replace(key, "lm.base_model.model.transformer", "lm.base_model.model.lm.transformer")
+            res[k] = state[key]
+        else:
+            res[key] = state[key]
+    return res
+
+
 def prepare_inputs_for_generation(input_ids, **kwargs):
     # Minimal example: return them as-is
     return {"input_ids": input_ids, **kwargs}
@@ -55,33 +67,33 @@ class MusicGenLora(nn.Module):
         )
         # 5) Convert musicgen to a LoRA-enabled model
 
-        self.musicgen = get_peft_model(musicgen, lora_config)
+        self.lm = get_peft_model(musicgen, lora_config)
         print_params(self)
 
     def set_use_generator(self, flag: bool):
-        self.musicgen.set_use_generator(flag)
+        self.lm.set_use_generator(flag)
 
     def get_cache(self):
-        return self.musicgen.get_cache()
+        return self.lm.get_cache()
 
     def reset_cache(self):
-        self.musicgen.reset_cache()
+        self.lm.reset_cache()
 
     def forward(self, input_ids, **kwargs):
         """
         Forward pass for the LoRA-wrapped model.
         Adjust as needed for your LM signature.
         """
-        return self.musicgen(input_ids, **kwargs)
+        return self.lm(input_ids, **kwargs)
 
     def inference(self, input_ids, **kwargs):
-        return self.musicgen.inference(input_ids, **kwargs)
+        return self.lm.inference(input_ids, **kwargs)
 
     def save_weights(self, path: str):
         """
         Saves only LoRA-related parameters.
         """
-        state = self.musicgen.state_dict()
+        state = self.state_dict()
         for key in list(state.keys()):
             if "lora_A" not in key and "lora_B" not in key:
                 state.pop(key)
@@ -92,6 +104,10 @@ class MusicGenLora(nn.Module):
         """
         Loads LoRA-only weights from saved .lora.pth file.
         """
+        
         lora_state = torch.load(path + ".lora.pth", map_location="cpu")
-        self.musicgen.load_state_dict(lora_state, strict=strict)
+        lora_state = reformat(lora_state)
+        self.load_state_dict(lora_state, strict=strict)
         print(f"LoRA weights loaded from: {path}.lora.pth")
+
+    

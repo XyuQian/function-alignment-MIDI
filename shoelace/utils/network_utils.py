@@ -7,6 +7,12 @@ import torch.nn.functional as F
 
 
 
+
+def transform_inputs(inputs, seg_res):
+    mask = (inputs == seg_res)*seg_res
+    cumulative_sums = torch.cumsum(mask, dim=-1) - seg_res
+    return torch.where(inputs>=seg_res, 0, inputs) + cumulative_sums
+
 def sample(logits, top_k_val=20, temperature=1.0):
     """
     Samples the next token from logits using top-k sampling.
