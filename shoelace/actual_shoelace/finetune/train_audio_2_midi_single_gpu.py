@@ -159,7 +159,7 @@ def main(args):
 
     model = Model(device=torch.device(device), 
                 mask_type=mask_type, model_configs=MODEL_FACTORY, model_names=["MIDILM", "AudioLM"])
-    dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
+    dataset, dataloader = get_dataset(duration=args.duration, rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, args.duration, device, model_dir,
           learning_rate=args.learning_rate,
           epochs=args.epoch)
