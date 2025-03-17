@@ -105,8 +105,7 @@ def multi_head_attention_forward(
     
     
     attn_output = F.scaled_dot_product_attention(q, k, v, attn_mask, dropout_p, is_causal)
-    attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
-
+    
     if use_generator:
         if not training and kv_cache is not None:
             wrap_attn_output = [{
@@ -123,6 +122,7 @@ def multi_head_attention_forward(
         yield wrap_attn_output
         attn_output = wrap_attn_output[0]["attn_output"]
 
+    attn_output = attn_output.permute(0, 2, 1, 3).contiguous().view(batch_size * tgt_len, embed_dim)
     attn_output = out_proj(attn_output)
     attn_output = attn_output.view(batch_size, tgt_len, attn_output.size(1))
     if not training and kv_cache is None:
