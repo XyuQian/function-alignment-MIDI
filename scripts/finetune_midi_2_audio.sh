@@ -1,9 +1,9 @@
 lr=1e-4
 exp=exp
-batch_size=3
+batch_size=4
 e=20
 w=1
-exp_dir=midi_2_audio_large
+exp_dir=midi_2_audio_medium
 
 CUDA_VISIBLE_DEVICES=0 python -m shoelace.actual_shoelace.midi_2_audio.finetune_single_gpu \
       --learning_rate=$lr \

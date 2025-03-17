@@ -50,6 +50,11 @@ def move_to_device(batch, dev):
     return batch.to(dev)
     
     
+def del_batch(batch):
+    if isinstance(batch, dict):
+        for k in batch:
+            del_batch(batch[k])
+    del batch
 
 @torch.no_grad()
 def evaluate(model, dataloader, e, i, device):
@@ -64,24 +69,24 @@ def evaluate(model, dataloader, e, i, device):
         loss = model(move_to_device(batch, device))
         total_loss += loss.item()
         num_batches += 1
-
+        del_batch(batch)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
     logging.info(f"Evaluation complete. Average Loss: {avg_loss:.4f}")
     model.train()
     return avg_loss
 
-
+@torch.no_grad()
 def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_loss):
-    with torch.no_grad():
-        writer.add_scalar('train/mean_loss', mean_loss, step)
-        model.save_weights(os.path.join(model_dir, f"latest_{e}_{i}"))
-        if eval_loss < min_loss:
-            min_loss = eval_loss
-            model.save_weights(os.path.join(model_dir, f"best"))
-            logging.info(f"Best checkpoint Epoch {e}, Step {i}: min Loss: {min_loss:.4f}")
 
-        writer.add_scalar("eval/loss", eval_loss, step)
-        logging.info(f"Epoch {e}, Step {i}: Eval Loss: {eval_loss:.4f}")
+    writer.add_scalar('train/mean_loss', mean_loss, step)
+    model.save_weights(os.path.join(model_dir, f"latest_{e}_{i}"))
+    if eval_loss < min_loss:
+        min_loss = eval_loss
+        model.save_weights(os.path.join(model_dir, f"best"))
+        logging.info(f"Best checkpoint Epoch {e}, Step {i}: min Loss: {min_loss:.4f}")
+
+    writer.add_scalar("eval/loss", eval_loss, step)
+    logging.info(f"Epoch {e}, Step {i}: Eval Loss: {eval_loss:.4f}")
         
     return min_loss
 
@@ -124,6 +129,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
             writer.add_scalar("lr", lr, step)
             n_element += 1
             mean_loss += loss.item()
+            del_batch(batch)
             
 
             # Uncomment the lines below to perform periodic evaluation:
@@ -150,7 +156,7 @@ def main(args):
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
     model = Model(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
-    model.load_weights("save_models/midi_2_audio_v1")
+    # model.load_weights("save_models/midi_2_audio_v1")
     dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,
