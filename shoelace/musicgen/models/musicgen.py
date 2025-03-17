@@ -103,7 +103,7 @@ class MusicGen(nn.Module):
             codes = prompt[:, :-3]
             self.cache = True
         else:
-            codes = input_ids
+            codes = F.pad(input_ids, (0, 0, 1, 0), "constant", PAD)
 
         prompt_len = codes.shape[1]
         input_codes = codes
@@ -126,7 +126,10 @@ class MusicGen(nn.Module):
                 codes = torch.concat([codes, next_token[:, None]], 1)
             input_codes = codes[:, -1:]
             
-        yield postprocess(codes) if last_chunk else codes
+        if last_chunk:
+            yield postprocess(codes)
+        else:
+            yield codes[:, 1:]
         
 
     def decode(self, input_ids):

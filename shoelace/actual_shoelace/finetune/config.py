@@ -21,7 +21,7 @@ MODEL_FACTORY = {
         "emb_dim": 1536,
         "num_heads": 24,
         "steps": 16,
-        "checkpoint_path": "save_models/fintune_musicgen_medium/latest_29_end.pth"
+        "checkpoint_path": "save_models/finetune_musicgen_medium/latest_29_end.pth"
     },
     "MIDILM": {
         "model": MIDILMLora,

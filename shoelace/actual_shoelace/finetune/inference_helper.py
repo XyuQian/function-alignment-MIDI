@@ -5,8 +5,8 @@ import torch.nn.functional as F
 class InferenceHelper:
     def __init__(self, model_folder, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
-        from shoelace.actual_shoelace.midi_2_audio.config import MODEL_FACTORY
-        self.model = Model(device=torch.device("cuda"), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+        from shoelace.actual_shoelace.finetune.config import MODEL_FACTORY
+        self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
 
@@ -22,7 +22,7 @@ class InferenceHelper:
             if midi_index is None:
                 break
 
-            audio_index = F.pad(x, (1, 0), "constant", 0) if n_id == 0 else x
+            audio_index = F.pad(x, (1, 0), "constant", 0)
             audio_index = audio_index.to(input_ids.device)
             
             self.model.inference(model_name="MIDILM", max_len=1,
@@ -41,8 +41,8 @@ class InferenceHelper:
             
             
             n_id += 1
-            # if n_id > 2:
-            #     break
+            if n_id > 2:
+                break
             
         results.append(audio_prompt)
         audio_codes = torch.concat(results, 1)

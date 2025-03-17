@@ -37,14 +37,18 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
         random_mask = torch.rand_like(base_mask)
         # Set positions to -inf based on the mask ratio to block attention.
         base_mask[random_mask < mask_ratio] = float('-inf')
+        another_mask = None
+    elif mask_type == "full":
+        another_mask = None
     else:
-        assert mask_type == "full"
+        assert mask_type == "bi_mask"
+        
    
     # Pad the masks to account for "no mask" or "CLS" positions.
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     # mask_b = F.pad(mask_b, (1, 0), "constant", 0)
 
-    return base_mask.to(device), None
+    return base_mask.to(device), another_mask
 
 
 def parse_dict(model_config: dict, model_names: str) -> dict:
