@@ -10,7 +10,7 @@ from shoelace.midi_lm.models.config import SEG_RES, PAD
 from shoelace.utils.network_utils import transform_inputs
 
 TOL_WIN = 0
-MAX_DUR = int(15.36*FRAME_RATE)
+
 TAIL_STEP = 512
 
 
@@ -57,6 +57,7 @@ class ShoelaceDataset(Dataset):
     """
 
     def __init__(self,
+                 duration: float,
                  path_folder: str,
                  rid: int,
                  is_mono: bool = True,
@@ -76,6 +77,8 @@ class ShoelaceDataset(Dataset):
         self.rid = rid
         self.use_loader = use_loader
         self.is_mono = is_mono
+        
+        max_frame = int(FRAME_RATE * duration)
 
         # Load the .lst file references & .h5 paths
         files_list, feature_paths = load_data_lst(path_folder, validation=validation)
@@ -97,7 +100,7 @@ class ShoelaceDataset(Dataset):
                     if audio_key not in hf:
                         continue
                     audio_len = hf[audio_key].shape[0]
-                    total_len = audio_len - MAX_DUR
+                    total_len = audio_len - max_frame
                     sos_indices = hf[fname + ".sos"][:]
                     res_sos_indices = hf[fname + ".res_sos"][:]
                     min_len = min(len(sos_indices), len(res_sos_indices))
@@ -111,7 +114,7 @@ class ShoelaceDataset(Dataset):
                             continue
                         
                         start_pos = start_idx//SEG_RES
-                        end_pos = (start_idx + MAX_DUR) // SEG_RES + TOL_WIN
+                        end_pos = (start_idx + max_frame) // SEG_RES + TOL_WIN
                         end_pos = min_len - 1 if end_pos >= min_len else end_pos
                         midi_st = sos_indices[start_pos]
                         midi_ed = sos_indices[end_pos]
@@ -129,6 +132,7 @@ class ShoelaceDataset(Dataset):
         # Flatten count
         self.total_segments = sum(len(self.index_map[k]) for k in self.index_map)
         self.cache_data = {}
+        self.max_frame = max_frame
 
         # Informational prints
         print("AudioDataset initialized.")
@@ -160,7 +164,7 @@ class ShoelaceDataset(Dataset):
                     "res_events": hf[fname + ".res_events"][:]
                 }
 
-        audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + MAX_DUR]
+        audio_segment = self.cache_data[fname]["audio"][start_pos: start_pos + self.max_frame]
         events_len = len(self.cache_data[fname]["events"])
         fake_ed = midi_ed + TAIL_STEP if midi_ed + TAIL_STEP < events_len else events_len
         midi_segment = self.cache_data[fname]["events"][midi_st : fake_ed]
