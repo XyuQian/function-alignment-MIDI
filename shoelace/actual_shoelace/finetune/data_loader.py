@@ -116,8 +116,11 @@ class ShoelaceDataset(Dataset):
                         midi_st = sos_indices[start_pos]
                         midi_ed = sos_indices[end_pos]
 
-                        midi_prefix_st = res_sos_indices[start_pos]
-                        midi_prefix_ed = res_sos_indices[end_pos]
+                        if start_pos + 1 < len(res_sos_indices):
+                            midi_prefix_st = res_sos_indices[start_pos]
+                            midi_prefix_ed = res_sos_indices[start_pos + 1]
+                        else:
+                            midi_prefix_st = midi_prefix_ed = -1
 
                         if midi_ed - midi_st < 2:
                             continue

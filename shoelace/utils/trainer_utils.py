@@ -38,7 +38,7 @@ class Trainer:
 
         scaler.scale(loss).backward()
         scaler.unscale_(optimizer)
-        grad = torch.nn.utils.clip_grad_norm_(params, max_norm=5.0, norm_type=2)
+        grad = torch.nn.utils.clip_grad_norm_(params, max_norm=1.0, norm_type=2)
         scaler.step(optimizer)
         scaler.update()
         lr_scheduler.step()

@@ -234,7 +234,7 @@ class Shoelace(nn.Module):
 
 
     @torch.no_grad()
-    def inference(self, model_name:str, max_len:int, 
+    def inference(self, model_name:str, max_len:int, reset_cache : bool, 
                     use_generator: bool, cond_model_name: str =None, 
                     cond_indices: torch.Tensor=None, 
                     main_indices: torch.Tensor=None, **kwargs) -> dict:
@@ -242,6 +242,8 @@ class Shoelace(nn.Module):
         model_dict = self.model_dict
         model_info = model_dict[model_name]
         model = model_info["model"]
+        if reset_cache:
+            model.reset_cache(False)
         
         model.set_use_generator(use_generator)
         model_gen = model.inference(max_len=max_len, **kwargs)
@@ -275,6 +277,9 @@ class Shoelace(nn.Module):
             
         return next(model_gen)
 
+    def decode(self, input_ids, model_name):
+        return self.model_dict[model_name]["model"].decode(input_ids)
+
     def load_weights(self, model_folder):
         state = reformat(torch.load(os.path.join(model_folder, "adapters.pth")))
 
@@ -304,6 +309,7 @@ class Shoelace(nn.Module):
             model.save_weights(weights_folder)
 
         print(f"Weights saved to: {model_folder}")
+
 
 if __name__=="__main__":
     from shoelace.actual_shoelace.config import MODEL_FACTORY

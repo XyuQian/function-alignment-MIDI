@@ -202,8 +202,9 @@ class MIDILM(nn.Module):
         self.use_generator = flag
         self.transformer_decoder.set_use_generator(flag)
 
-    def reset_cache(self):
-        self.cache = False
+    def reset_cache(self, reset_sos=True):
+        if reset_sos:
+            self.cache = False
         self.pos_encoding.reset_cache()
         self.transformer_decoder.reset_cache()
 
@@ -274,11 +275,6 @@ class MIDILM(nn.Module):
         print(f"Successfully loaded weights from {path}")
 
 
-
-        
-
-    
-
     @torch.no_grad()
     def yield_inference(self, x, max_len, last_chunk=True, top_k=32, temperature=1.0):
         """
@@ -288,7 +284,7 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt = x
         
-        for _ in tqdm(range(max_len), initial=x.shape[1], desc="Inference", total=max_len + x.shape[1]):
+        for _ in tqdm(range(max_len), initial=x.shape[1], desc="MidiLM Inference", total=max_len + x.shape[1]):
             if self.use_generator:
                 decoder_output = yield from self(prompt, return_memory=True, 
                     return_loss=False, with_sos=not self.cache, return_val=False)

@@ -56,9 +56,10 @@ class MusicGen(nn.Module):
         self.reset_cache()
 
 
-    def reset_cache(self):
+    def reset_cache(self, reset_sos=True):
         self.lm.reset_cache()
-        self.cache = False
+        if reset_sos:
+            self.cache = False
 
     def set_use_generator(self, flag: bool):
         self.use_generator = flag
@@ -70,8 +71,6 @@ class MusicGen(nn.Module):
     def prepare_for_lora(self):
         self.lm.init_qkv()
 
-    def postprocess(self, audio_seq):
-        pass
 
     def yield_forward(self, input_ids, return_loss=True, with_preprocess=True,
                       with_postprocess=True, **kwargs):
@@ -93,25 +92,23 @@ class MusicGen(nn.Module):
 
 
     @torch.no_grad()
-    def yield_inference(self, x, batch_size=None, device=None, 
+    def yield_inference(self, input_ids, batch_size=None, device=None, 
         last_chunk=True, max_len=int(15*50), top_k=250, temperature=1.0):
         """
         Performs inference by generating a sequence step-by-step.
         """
 
         if not self.cache:
-            prompt = preprocess(x, batch_size=batch_size, device=device)
+            prompt = preprocess(input_ids, batch_size=batch_size, device=device)
             codes = prompt[:, :-3]
             self.cache = True
         else:
-            prompt = x
+            codes = input_ids
 
         prompt_len = codes.shape[1]
         input_codes = codes
-        
-        history = 0
 
-        for i in tqdm(range(max_len), initial=prompt_len, desc="Inference", total=max_len + prompt_len):
+        for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
             if self.use_generator:
                 logits = yield from self(input_codes, with_preprocess=False, 
                 return_loss=False, with_postprocess=False)
@@ -122,7 +119,7 @@ class MusicGen(nn.Module):
             next_token = sample(logits[:, -1], top_k_val=top_k)
 
             
-            if i < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
+            if not self.cache and i < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
                 prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
                 codes = prompt[:, :prompt_len + i + 1]
             else:
@@ -131,6 +128,9 @@ class MusicGen(nn.Module):
             
         yield postprocess(codes) if last_chunk else codes
         
+
+    def decode(self, input_ids):
+        return postprocess(input_ids)
             
     def forward(self, input_ids, return_val=True, **kwargs):
         generator = self.yield_forward(input_ids, **kwargs)
@@ -142,7 +142,7 @@ class MusicGen(nn.Module):
 
     @torch.no_grad()
     def inference(self, input_ids, **kwargs):
-        generator = self.yield_inference(input_ids, **kwargs)
+        generator = self.yield_inference(input_ids=input_ids, **kwargs)
         if self.use_generator:
             return generator
         else:

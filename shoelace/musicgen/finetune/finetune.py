@@ -158,7 +158,7 @@ def train_dist(replica_id, replica_count, port, model_dir, args):
 
     logging.info(f"Initializing process group for replica {replica_id}/{replica_count}")
 
-    model = Model(name="large", device=device)
+    model = Model(name="medium", device=device)
     model = model.to(device)
     model = DDP(model, [replica_id])
 

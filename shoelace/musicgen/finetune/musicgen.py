@@ -39,7 +39,7 @@ class MusicGenLora(nn.Module):
     A wrapper around MusicGen that applies LoRA to the transformer layers.
     """
 
-    def __init__(self, name, device, r=8, lora_alpha=16, use_generator=False):
+    def __init__(self, name, device, r=32, lora_alpha=64, use_generator=False):
         super().__init__()
         # 1) Initialize base MusicGen model on the specified device
         musicgen = MusicGen(name=name, device=device, use_generator=use_generator)
@@ -76,8 +76,11 @@ class MusicGenLora(nn.Module):
     def get_cache(self):
         return self.lm.get_cache()
 
-    def reset_cache(self):
-        self.lm.reset_cache()
+    def reset_cache(self, reset_sos=True):
+        self.lm.reset_cache(reset_sos)
+
+    def decode(self, input_ids):
+        return self.lm.decode(input_ids)
 
     def forward(self, input_ids, **kwargs):
         """

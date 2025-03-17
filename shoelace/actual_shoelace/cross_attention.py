@@ -91,7 +91,6 @@ class LowRankMultiheadAttention(nn.Module):
         key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
         
         kv_x = torch.concat([prompt, kv_x], 1)
-
         
         key = self.k_linear(kv_x)  + self.k_pos_linear(key_pos)
         value = self.v_linear(kv_x)
