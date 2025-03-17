@@ -16,7 +16,7 @@ def reformat(state):
     return res
 
 
-def create_mask(a_len: int, b_len: int, n_prompts: int, device: torch.device, 
+def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: torch.device, 
             mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
     """
     Create causal-like masks for cross attention between two sequences.
@@ -33,19 +33,18 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, device: torch.device,
             - mask_b: A cross-attention mask from B to A.
     """
     base_mask = torch.zeros(a_len, b_len)
-    random_mask = torch.rand_like(base_mask)
-
-    # Set positions to -inf based on the mask ratio to block attention.
-    base_mask[random_mask < mask_ratio] = float('-inf')
-
-    # Create the reverse mask and shift values to block attention.
-    mask_b = base_mask.transpose(0, 1).clone() + float('-inf')
-    
+    if mask_type == "random":
+        random_mask = torch.rand_like(base_mask)
+        # Set positions to -inf based on the mask ratio to block attention.
+        base_mask[random_mask < mask_ratio] = float('-inf')
+    else:
+        assert mask_type == "full"
+   
     # Pad the masks to account for "no mask" or "CLS" positions.
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     # mask_b = F.pad(mask_b, (1, 0), "constant", 0)
 
-    return base_mask.to(device), mask_b.to(device)
+    return base_mask.to(device), None
 
 
 def parse_dict(model_config: dict, model_names: str) -> dict:
@@ -72,7 +71,7 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 
 
 class Shoelace(nn.Module):
-    def __init__(self, device : torch.device, model_configs: dict, bi_direction: bool = False, model_names: list = None):
+    def __init__(self, device : torch.device, mask_type: str, model_configs: dict, bi_direction: bool = False, model_names: list = None):
         """
         Initialize the Shoelace model with given configurations.
 
@@ -144,6 +143,7 @@ class Shoelace(nn.Module):
         self.models = models
         self.adapters = adapters
         self.model_names = model_names
+        self.mask_type = mask_type
 
         print_params(self)
 
@@ -203,7 +203,7 @@ class Shoelace(nn.Module):
             
             if i % layer_skips[main_model_name] == 0 and main_adapter:
                 
-                mask, _ = create_mask(main_seq_len, cond_seq_len, n_prompts[0], device)
+                mask, _ = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
                 adapt_output_a = main_adapter(layer_idx=i // layer_skips[main_model_name],
                                                 hidden_a=main_hidden[0], 
                                                 hidden_b=cond_hidden[0], 
@@ -214,7 +214,7 @@ class Shoelace(nn.Module):
                 main_hidden[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[cond_model_name] == 0 and self.bi_direction and cond_adapter:
-                mask, _ = create_mask(cond_seq_len, main_seq_len, n_prompts[1], device)
+                mask, _ = create_mask(cond_seq_len, main_seq_len, n_prompts[1], self.mask_type, device)
                 adapt_output_b = cond_adapter(layer_idx=i // layer_skips[cond_model_name],
                                                 hidden_a=cond_hidden[0], 
                                                 hidden_b=main_hidden[0],
@@ -262,10 +262,6 @@ class Shoelace(nn.Module):
                 
                 if j % layer_skip == 0:
                     hidden_b = cond_model_cache[j // cond_layer_skip]
-
-                    seq_len_a = hidden_a[0]["q"].shape[2]
-                    seq_len_b = hidden_b["query"].shape[1]
-                    mask, _ = create_mask(seq_len_a, seq_len_b, n_prompts, hidden_a[0]["q"].device, mask_ratio=-1)
                     adapt_output = adapter(
                         layer_idx=j // layer_skip,
                                                 hidden_a=hidden_a[0], 

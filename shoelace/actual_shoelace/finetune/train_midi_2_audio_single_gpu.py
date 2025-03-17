@@ -148,6 +148,7 @@ def train(model, dataset, dataloader, device, model_dir, learning_rate, epochs):
 def main(args):
     experiment_folder = args.experiment_folder
     experiment_name = args.exp_name
+    mask_type= args.mask_type
 
     os.makedirs(experiment_folder, exist_ok=True)
     model_dir = os.path.join(experiment_folder, experiment_name)
@@ -155,12 +156,13 @@ def main(args):
 
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
-    model = Model(device=torch.device(device), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
-    # model.load_weights("save_models/midi_2_audio_v1")
+    model = Model(device=torch.device(device), 
+                mask_type=mask_type, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
     dataset, dataloader = get_dataset(rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, device, model_dir,
           learning_rate=args.learning_rate,
           epochs=args.epoch)
+
 
 
 if __name__ == "__main__":
@@ -170,6 +172,7 @@ if __name__ == "__main__":
     parser.add_argument('-b', '--batch_size', type=int, default=64)
     parser.add_argument('-lr', '--learning_rate', type=float, required=True)
     parser.add_argument('-p', '--exp_name', type=str, required=True)
+    parser.add_argument('-m', '--mask_type', type=str, required=True)
 
     args = parser.parse_args()
 
