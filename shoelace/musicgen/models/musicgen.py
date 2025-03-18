@@ -92,8 +92,8 @@ class MusicGen(nn.Module):
 
 
     @torch.no_grad()
-    def yield_inference(self, input_ids, batch_size=None, device=None, 
-        last_chunk=True, max_len=int(15*50), top_k=250, temperature=1.0):
+    def yield_inference(self, input_ids, max_len, batch_size=None, device=None, 
+        last_chunk=True, top_k=250, temperature=1.0):
         """
         Performs inference by generating a sequence step-by-step.
         """
@@ -103,7 +103,7 @@ class MusicGen(nn.Module):
         prompt_len = codes.shape[1]
         input_codes = codes
 
-        for i in tqdm(range(max_len + 4 - prompt_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + 4):
+        for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
             if self.use_generator:
                 logits = yield from self(input_codes, with_preprocess=False, 
                 return_loss=False, with_postprocess=False)
