@@ -16,13 +16,13 @@ class InferenceHelper:
     def inference(self, input_ids_generator, chunk_frame, hop_frame, top_k):
         audio_prompt = None
         n_id = 0
-        x = torch.arange(chunk_frame + 4).unsqueeze(0).long()
         results = []
         for input_ids, midi_index in input_ids_generator:
 
             if midi_index is None:
                 break
-            
+            print(input_ids)
+            print(midi_index)
             self.model.inference(model_name="MIDILM", max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
                             use_generator=False, top_k=16, 
                             last_chunk=True, input_ids=input_ids, reset_cache=True)
@@ -38,8 +38,8 @@ class InferenceHelper:
             
             
             n_id += 1
-            # if n_id > 2:
-            #     break
+            if n_id > 1:
+                break
             
         results.append(audio_prompt)
         audio_codes = torch.concat(results, 1).transpose(1, 2)
