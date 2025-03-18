@@ -27,7 +27,7 @@ def postprocess(x):
 
     for i in range(4):
         outputs.append(x[:, i + 1: x_len - (3 - i), i])
-    return torch.stack(outputs, -2)
+    return torch.stack(outputs, -1)
 
 
 class MusicGen(nn.Module):
