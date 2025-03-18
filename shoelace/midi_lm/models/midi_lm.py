@@ -285,9 +285,10 @@ class MIDILM(nn.Module):
         prompt = x
         cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1)
         assert cur_timing < max_len
-        next_token = None
+        seg_complete = False
         for _ in tqdm(range(max_len - cur_timing), initial=cur_timing, desc="MidiLM Inference", total=max_len):
-            while not next_token or not next_token[0, 0] == SEG_RES:
+            seg_complete = False
+            while not seg_complete:
                 if self.use_generator:
                     decoder_output = yield from self(prompt, return_memory=True, 
                         return_loss=False, with_sos=not self.cache, return_val=False)
@@ -303,6 +304,8 @@ class MIDILM(nn.Module):
                                                 temperature=temperature, top_k=top_k)
                 decoded_sequence.append(next_token[:, None])
                 prompt = next_token[:, None]
+                if next_token[0, 0] == SEG_RES:
+                    seg_complete = True
                 if last_chunk:
                     break
 
