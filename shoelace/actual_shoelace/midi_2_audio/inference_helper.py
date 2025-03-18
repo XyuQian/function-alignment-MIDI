@@ -22,9 +22,6 @@ class InferenceHelper:
 
             if midi_index is None:
                 break
-
-            audio_index = F.pad(x, (1, 0), "constant", 0)
-            audio_index = audio_index.to(input_ids.device)
             
             self.model.inference(model_name="MIDILM", max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
                             use_generator=False, top_k=16, 
@@ -41,8 +38,8 @@ class InferenceHelper:
             
             
             n_id += 1
-            if n_id > 2:
-                break
+            # if n_id > 2:
+            #     break
             
         results.append(audio_prompt)
         audio_codes = torch.concat(results, 1).transpose(1, 2)

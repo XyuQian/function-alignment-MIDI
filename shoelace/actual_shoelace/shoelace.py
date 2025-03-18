@@ -246,7 +246,7 @@ class Shoelace(nn.Module):
         model_info = model_dict[model_name]
         model = model_info["model"]
         if reset_cache:
-            model.reset_cache(False)
+            model.reset_cache()
         
         model.set_use_generator(use_generator)
         model_gen = model.inference(max_len=max_len, **kwargs)

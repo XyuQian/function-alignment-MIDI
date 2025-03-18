@@ -43,8 +43,7 @@ def get_midi_data(path, chunk_frame, hop_frame, device):
         input_ids = torch.from_numpy(seq).long().unsqueeze(0).to(device)
         input_ids[input_ids < 0] = PAD
         midi_index = transform_inputs(input_ids[..., 0], SEG_RES).long().to(device)
-        if st_id == 0:
-            midi_index = F.pad(midi_index, (1, 0), "constant", 0)
+        midi_index = F.pad(midi_index, (1, 0), "constant", 0)
         
         yield input_ids, midi_index
 

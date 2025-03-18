@@ -105,6 +105,7 @@ class MusicGen(nn.Module):
         index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0)
         if input_codes.shape[1] > 1:
             index = F.pad(index[:, :-1], (1, 0), "constant", 0)
+            initial = False
         else:
             initial = True
             
