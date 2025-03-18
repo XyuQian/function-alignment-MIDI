@@ -287,8 +287,10 @@ class MIDILM(nn.Module):
         decoded_sequence = [None]
         prompt = x
         if x is None:
-            midi_index = torch.zeros([batch_size, 1]).to(device)
+            midi_index = torch.zeros([batch_size, 2]).to(device)
             cur_timing = 0
+            x = torch.zeros([batch_size, 1, 6]).to(device) + PAD
+            x[:, :, 0] = SEG_RES
         else:
             midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device)
             midi_index = F.pad(midi_index, (1, 0), "constant", 0)

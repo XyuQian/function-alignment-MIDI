@@ -88,7 +88,7 @@ class MusicGen(nn.Module):
 
         if with_postprocess:
             pred = postprocess(pred)
-        return pred
+        yield pred
 
 
     @torch.no_grad()
@@ -116,10 +116,10 @@ class MusicGen(nn.Module):
                     "index": index
                 }
                 logits = yield from self(input_codes, with_preprocess=False, 
-                return_loss=False, with_postprocess=False, return_val=False)
+                return_loss=False, with_postprocess=False)
             else:
                 logits = self(input_codes, with_preprocess=False, return_loss=False, 
-                    with_postprocess=False, return_val=False)
+                    with_postprocess=False)
             
             next_token = sample(logits[:, -1], top_k_val=top_k)
             index = index[:, -1:] if initial else index[:, -1:] + 1
