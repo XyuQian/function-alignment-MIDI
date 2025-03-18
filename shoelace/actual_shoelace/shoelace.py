@@ -278,7 +278,7 @@ class Shoelace(nn.Module):
                                                 attn_mask=None)
                     hidden_a[0]["attn_output"] = adapt_output
             
-        return hidden_a["output"]
+        return main_indices["output"]
 
     def decode(self, input_ids, model_name):
         return self.model_dict[model_name]["model"].decode(input_ids)

@@ -119,7 +119,7 @@ class MusicGen(nn.Module):
                     with_postprocess=False)
            
             next_token = sample(logits[:, -1], top_k_val=top_k)
-            index = index[:, -1:] + 1
+            index = index[:, -1:] + 1 if input_codes.shape[1] > 1 else index[:, -1:]
             
             if i + prompt_len - 1 < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
                 prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
