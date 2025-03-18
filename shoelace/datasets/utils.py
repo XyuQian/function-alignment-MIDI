@@ -10,10 +10,10 @@ TAIL_LEN = 256
 def get_test_data(sec_len):
     """Loads test MIDI data for inference."""
     paths = [
-        "data/POP909/909/909.mid",
-        "data/POP909/803/803.mid",
+        # "data/POP909/909/909.mid",
+        # "data/POP909/803/803.mid",
         "data/POP909/860/860.mid",
-        "data/POP909/757/757.mid"
+        # "data/POP909/757/757.mid"
     ]
     sequences = []
 

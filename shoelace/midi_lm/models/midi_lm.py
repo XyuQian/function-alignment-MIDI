@@ -283,24 +283,30 @@ class MIDILM(nn.Module):
 
         decoded_sequence = [None]
         prompt = x
-        
-        for _ in tqdm(range(max_len), initial=x.shape[1], desc="MidiLM Inference", total=max_len + x.shape[1]):
-            if self.use_generator:
-                decoder_output = yield from self(prompt, return_memory=True, 
-                    return_loss=False, with_sos=not self.cache, return_val=False)
-            else:
-                decoder_output = self(prompt, return_memory=True, 
-                    return_loss=False, with_sos=not self.cache, return_val=True)
-            self.cache = True
+        cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1) * SEG_RES
+        assert cur_timing >= max_len
+        next_token = None
+        for _ in tqdm(range(max_len - cur_timing), initial=cur_timing, desc="MidiLM Inference", total_len=max_len):
+            while not next_token or not next_token[0, 0] == SEG_RES:
+                if self.use_generator:
+                    decoder_output = yield from self(prompt, return_memory=True, 
+                        return_loss=False, with_sos=not self.cache, return_val=False)
+                else:
+                    decoder_output = self(prompt, return_memory=True, 
+                        return_loss=False, with_sos=not self.cache, return_val=True)
+                self.cache = True
             
-            decoder_output = decoder_output[:, -1:]
-            # print(decoder_output[0, 0, 100:300], "here")
-            next_token = self.baby_llm.inference(memory=decoder_output,
-                                            pre_token=decoded_sequence[-1],
-                                            temperature=temperature, top_k=top_k)
-            decoded_sequence.append(next_token[:, None])
-            prompt = next_token[:, None]
-        yield torch.concat([x] + decoded_sequence[1:], 1)
+                decoder_output = decoder_output[:, -1:]
+                # print(decoder_output[0, 0, 100:300], "here")
+                next_token = self.baby_llm.inference(memory=decoder_output,
+                                                pre_token=decoded_sequence[-1],
+                                                temperature=temperature, top_k=top_k)
+                decoded_sequence.append(next_token[:, None])
+                prompt = next_token[:, None]
+
+        yield {
+            "output" : torch.concat([x] + decoded_sequence[1:], 1)
+        }
         
 
     def forward(self, input_ids, return_val=True, **kwargs):
@@ -317,7 +323,7 @@ class MIDILM(nn.Module):
         if self.use_generator:
             return generator
         else:
-            return next(generator)
+            return next(generator)["output"]
 
     def get_cache(self):
         return self.transformer_decoder.get_cache()

@@ -117,7 +117,7 @@ def run_inference(model_path, output_folder):
     input_seq, num_samples = get_test_data()
     input_seq = input_seq.to(device).long()
 
-    generated_seq = model.inference(input_seq[:, :128], max_len=SEQ_LEN, top_k=16, temperature=1.0)
+    generated_seq = model.inference(input_seq[:, :128], max_len=15, top_k=16, temperature=1.0)
 
     # for i in range(20):
     #     print(generated_seq[0, i + 124])
