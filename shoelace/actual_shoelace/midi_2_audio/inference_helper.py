@@ -29,7 +29,8 @@ class InferenceHelper:
 
 
             audio_codes = self.model.inference(model_name="AudioLM", 
-                            cond_model_name="MIDILM", max_len=chunk_frame - hop_frame + 4 if n_id > 0 else chunk_frame + 4,
+                            cond_model_name="MIDILM", 
+                            max_len=chunk_frame - hop_frame + 4 if n_id > 0 else chunk_frame + 4,
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=audio_prompt, cond_indices=midi_index,
                             batch_size=len(input_ids), device=input_ids.device)

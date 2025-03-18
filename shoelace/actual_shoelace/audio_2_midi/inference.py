@@ -20,7 +20,7 @@ def get_audio_data(path, chunk_frame, hop_frame, device):
     rvq_codes = extract_rvq(x, sr).transpose(0, 1).cpu().numpy()
     for i in range(0, len(rvq_codes), hop_frame):
         ed = i + chunk_frame if i + chunk_frame < len(rvq_codes) else len(rvq_codes)
-        audio_chunk = rvq_codes[i : ed]
+        audio_chunk = torch.from_numpy(rvq_codes[i : ed])
         index = torch.arange(len(audio_chunk) + 3)
         index = F.pad(index, (1, 0), "constant", 0)
         yield audio_chunk.unsqueeze(0).to(device), index.unsqueeze(0).to(device)
@@ -33,7 +33,7 @@ def run_inference(model_folder, output_folder, fid):
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*8)
     model = InferenceHelper(model_folder=model_folder, device=device)
-    path = glob.glob(f"data/pop909_audio/{fid}_*/original.mp3")[0]
+    path = glob.glob(f"data/pop909_audio/{fid}-*/original.mp3")[0]
     audio_data_generator = get_audio_data(path, chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
     midi_codes, audio_codes = model.inference(audio_data_generator, 

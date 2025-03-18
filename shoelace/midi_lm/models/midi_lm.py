@@ -5,7 +5,7 @@ from shoelace.utils.network_utils import sample
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
-    N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES, EVENT_RES
+    N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES, RES_EVENT
 from shoelace.utils.network_utils import transform_inputs
 
 import torch
@@ -320,7 +320,7 @@ class MIDILM(nn.Module):
                 decoded_sequence.append(next_token[:, None])
                 prompt = next_token[:, None]
 
-                if next_token[0, 0] < EVENT_RES:
+                if next_token[0, 0] < RES_EVENT:
                     midi_index = (next_token[:, :1] + index_cursor*SEG_RES).long()
                 else:
                     midi_index = (torch.zeros_like(next_token[:, :1]) + index_cursor*SEG_RES).long()

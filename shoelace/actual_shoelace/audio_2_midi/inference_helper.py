@@ -20,7 +20,8 @@ class InferenceHelper:
     def __init__(self, model_folder, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
         from shoelace.actual_shoelace.audio_2_midi.config import MODEL_FACTORY
-        self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+        self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, 
+                model_names=["MIDILM", "AudioLM"])
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
 
@@ -34,7 +35,7 @@ class InferenceHelper:
         for input_ids, audio_index in input_ids_generator:
             if audio_index is None:
                 break
-            self.model.inference(model_name="AudioLM", max_len=1,
+            self.model.inference(model_name="AudioLM", max_len=1, input_ids=input_ids,
                             use_generator=False, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
 

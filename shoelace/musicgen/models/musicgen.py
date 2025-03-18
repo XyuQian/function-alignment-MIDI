@@ -120,7 +120,8 @@ class MusicGen(nn.Module):
             else:
                 logits = self(input_codes, with_preprocess=False, return_loss=False, 
                     with_postprocess=False)
-           
+            if last_chunk:
+                break
             next_token = sample(logits[:, -1], top_k_val=top_k)
             index = index[:, -1:] if initial else index[:, -1:] + 1
             initial = False
