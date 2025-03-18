@@ -57,7 +57,7 @@ class InferenceHelper:
         
         results.append(remove_head(midi_prompt))
         midi_codes = torch.concat(results, 1)
-        return midi_codes, input_ids
+        return midi_codes, input_ids.transpose(1, 2)
 
 
 

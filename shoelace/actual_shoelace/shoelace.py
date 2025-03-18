@@ -191,6 +191,7 @@ class Shoelace(nn.Module):
         cond_indices = args[cond_model_name]["indices"]
 
 
+        
         n_prompts = [model_dict[model_name]["n_prompts"] for model_name in [main_model_name, cond_model_name]]
 
         # Iterate through layers and perform cross-attention when appropriate.
@@ -258,17 +259,20 @@ class Shoelace(nn.Module):
         layer_skip = model_info["layer_skip"]
         n_prompts = model_info["n_prompts"]
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
-
+        max_n_layers = max(model_dict[model_name]["n_layers"], model_dict[cond_model_name]["n_layers"])
         for i in range(2333333):
             main_indices = next(model_gen)
             if "output" in main_indices:
                 break
             main_indices = main_indices["index"]
 
-            for j in range(model_info["n_layers"]):
-                hidden_a = next(model_gen)
+            for j in range(max_n_layers):
                 if j % layer_skip == 0:
+                    hidden_a = next(model_gen)
+                if j % cond_layer_skip == 0:
                     hidden_b = cond_model_cache[j // cond_layer_skip]
+
+                if j % layer_skip == 0:
                     adapt_output = adapter(
                         layer_idx=j // layer_skip,
                                                 hidden_a=hidden_a[0], 
