@@ -1,11 +1,25 @@
 import torch
 import torch.nn.functional as F
+from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
+
+def cut_midi(input_ids, hop_frame, chunk_frame):
+    hop_len = hop_frame // SEG_RES
+    chunk_len = chunk_frame // SEG_RES
+    seg_pos = torch.arange(len(input_ids[0])).to(input_ids.device)
+    seg_pos = seg_pos[input_ids[0, :, 0] == SEG_RES]
+    return input_ids[:, :seg_pos[hop_len]], input_ids[:, seg_pos[hop_len]: seg_pos[chunk_len]]
+
+
+
+def remove_head(x):
+    idx = x[0, :, 0] < RES_EVENT
+    return x[0, idx].unsqueeze(0)
 
 
 class InferenceHelper:
     def __init__(self, model_folder, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
-        from shoelace.actual_shoelace.finetune.config import MODEL_FACTORY
+        from shoelace.actual_shoelace.audio_2_midi.config import MODEL_FACTORY
         self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
@@ -13,40 +27,35 @@ class InferenceHelper:
     
     @torch.no_grad()
     def inference(self, input_ids_generator, chunk_frame, hop_frame, top_k):
-        audio_prompt = None
+        midi_prompt = None
         n_id = 0
-        x = torch.arange(chunk_frame + 4).unsqueeze(0).long()
+        chunk_len = chunk_frame // SEG_RES
         results = []
-        for input_ids, midi_index in input_ids_generator:
-
-            if midi_index is None:
+        for input_ids, audio_index in input_ids_generator:
+            if audio_index is None:
                 break
-
-            audio_index = F.pad(x, (1, 0), "constant", 0)
-            audio_index = audio_index.to(input_ids.device)
-            
-            self.model.inference(model_name="MIDILM", max_len=1,
-                            use_generator=False, top_k=16, 
-                            last_chunk=False, input_ids=input_ids, reset_cache=True)
+            self.model.inference(model_name="AudioLM", max_len=1,
+                            use_generator=False, top_k=top_k, reset_cache=True,
+                            last_chunk=True, device=input_ids.device)
 
 
-            audio_codes = self.model.inference(model_name="AudioLM", 
-                            cond_model_name="MIDILM", max_len=chunk_frame - hop_frame + 4 if n_id > 0 else chunk_frame + 4,
+            midi_codes = self.model.inference(model_name="MIDILM", 
+                            cond_model_name="AudioLM", max_len=chunk_len,
                             use_generator=True, top_k=top_k, reset_cache=True,
-                            last_chunk=False, input_ids=audio_prompt, cond_indices=midi_index,
-                            main_indices=audio_index,
+                            last_chunk=False, input_ids=midi_prompt, 
+                            cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
-            results.append(audio_codes[:, :hop_frame])
-            audio_prompt = audio_codes[:, hop_frame:chunk_frame]
-            
+            prefix, midi_prompt = cut_midi(midi_codes, hop_frame, chunk_frame)
+            results.append(prefix)
             
             n_id += 1
             if n_id > 2:
                 break
-            
-        results.append(audio_prompt)
-        audio_codes = torch.concat(results, 1).transpose(1, 2)
-        return audio_codes, input_ids
+        
+        
+        results.append(remove_head(midi_prompt))
+        midi_codes = torch.concat(results, 1)
+        return midi_codes, input_ids
 
 
 

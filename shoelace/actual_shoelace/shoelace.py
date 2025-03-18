@@ -240,8 +240,7 @@ class Shoelace(nn.Module):
     @torch.no_grad()
     def inference(self, model_name:str, max_len:int, reset_cache : bool, 
                     use_generator: bool, cond_model_name: str =None, 
-                    cond_indices: torch.Tensor=None, 
-                    main_indices: torch.Tensor=None, **kwargs) -> dict:
+                    cond_indices: torch.Tensor=None,  **kwargs) -> dict:
         
         model_dict = self.model_dict
         model_info = model_dict[model_name]
@@ -261,22 +260,23 @@ class Shoelace(nn.Module):
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
 
         for i in range(2333333):
+            main_indices = next(model_gen)
+            if "output" in main_indices:
+                break
+            main_indices = main_indices["index"]
+
             for j in range(model_info["n_layers"]):
                 hidden_a = next(model_gen)
-                if "output" in hidden_a:
-                    break
                 if j % layer_skip == 0:
                     hidden_b = cond_model_cache[j // cond_layer_skip]
                     adapt_output = adapter(
                         layer_idx=j // layer_skip,
                                                 hidden_a=hidden_a[0], 
                                                 hidden_b=hidden_b,
-                                                indices_a=main_indices[:, i : i + 1],
+                                                indices_a=main_indices,
                                                 indices_b=cond_indices,
                                                 attn_mask=None)
                     hidden_a[0]["attn_output"] = adapt_output
-            if "output" in hidden_a:
-                    break
             
         return hidden_a["output"]
 

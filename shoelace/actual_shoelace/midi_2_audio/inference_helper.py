@@ -1,12 +1,12 @@
 import torch
 import torch.nn.functional as F
-from shoelace.midi_lm.config import SEG_RES
+from shoelace.midi_lm.models.config import SEG_RES
 
 
 class InferenceHelper:
     def __init__(self, model_folder, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
-        from shoelace.actual_shoelace.finetune.config import MODEL_FACTORY
+        from shoelace.actual_shoelace.midi_2_audio.config import MODEL_FACTORY
         self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
@@ -35,7 +35,6 @@ class InferenceHelper:
                             cond_model_name="MIDILM", max_len=chunk_frame - hop_frame + 4 if n_id > 0 else chunk_frame + 4,
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=audio_prompt, cond_indices=midi_index,
-                            main_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
             results.append(audio_codes[:, :hop_frame])
             audio_prompt = audio_codes[:, hop_frame:chunk_frame]

@@ -102,9 +102,16 @@ class MusicGen(nn.Module):
         codes = prompt[:, :-3]
         prompt_len = codes.shape[1]
         input_codes = codes
+        index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0)
+        if input_codes.shape[1] > 1:
+            index = F.pad(index[:, :-1], (1, 0), "constant", 0)
+            
 
         for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
             if self.use_generator:
+                yield {
+                    "index": index
+                }
                 logits = yield from self(input_codes, with_preprocess=False, 
                 return_loss=False, with_postprocess=False)
             else:
@@ -112,9 +119,9 @@ class MusicGen(nn.Module):
                     with_postprocess=False)
            
             next_token = sample(logits[:, -1], top_k_val=top_k)
-
+            index = index[:, -1:] + 1
             
-            if not self.cache and i < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
+            if i + prompt_len - 1 < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
                 prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
                 codes = prompt[:, :prompt_len + i + 1]
             else:
