@@ -45,7 +45,7 @@ class InferenceHelper:
                 break
             
         results.append(audio_prompt)
-        audio_codes = torch.concat(results, 1)
+        audio_codes = torch.concat(results, 1).transpose(1, 2)
         return audio_codes, input_ids
 
 

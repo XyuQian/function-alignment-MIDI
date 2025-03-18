@@ -10,10 +10,10 @@ from shoelace.utils.trainer_utils import Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
-from shoelace.actual_shoelace.finetune.data_loader import ShoelaceDataset as Dataset
-from shoelace.actual_shoelace.finetune.data_loader import collate_fn, worker_init_fn
+from shoelace.actual_shoelace.data_loader import ShoelaceDataset as Dataset
+from shoelace.actual_shoelace.data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.shoelace import Shoelace as Model
-from shoelace.actual_shoelace.finetune.config import MODEL_FACTORY
+from shoelace.actual_shoelace.midi_2_audio.config import MODEL_FACTORY
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -158,7 +158,7 @@ def main(args):
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
     model = Model(device=torch.device(device), 
-                mask_type=mask_type, model_configs=MODEL_FACTORY, model_names=["MIDILM", "AudioLM"])
+                mask_type=mask_type, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
     dataset, dataloader = get_dataset(duration=args.duration, rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, args.duration, device, model_dir,
           learning_rate=args.learning_rate,
