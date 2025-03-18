@@ -31,7 +31,7 @@ class InferenceHelper:
 
 
             audio_codes = self.model.inference(model_name="AudioLM", 
-                            cond_model_name="MIDILM", max_len=chunk_frame - hop_frame if n_id > 0 else chunk_frame,
+                            cond_model_name="MIDILM", max_len=chunk_frame,
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=audio_prompt, cond_indices=midi_index,
                             main_indices=audio_index,
@@ -46,7 +46,6 @@ class InferenceHelper:
             
         results.append(audio_prompt)
         audio_codes = torch.concat(results, 1)
-        audio_codes = self.model.decode(input_ids=audio_codes, model_name="AudioLM")
         return audio_codes, input_ids
 
 

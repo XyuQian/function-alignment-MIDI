@@ -281,7 +281,7 @@ class Shoelace(nn.Module):
         return self.model_dict[model_name]["model"].decode(input_ids)
 
     def load_weights(self, model_folder):
-        state = reformat(torch.load(os.path.join(model_folder, "adapters.pth")))
+        state = torch.load(os.path.join(model_folder, "adapters.pth"))
 
         self.load_state_dict(state, strict=False)
         

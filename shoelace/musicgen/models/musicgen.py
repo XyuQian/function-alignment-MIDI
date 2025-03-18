@@ -98,17 +98,12 @@ class MusicGen(nn.Module):
         Performs inference by generating a sequence step-by-step.
         """
 
-        if not self.cache:
-            prompt = preprocess(input_ids, batch_size=batch_size, device=device)
-            codes = prompt[:, :-3]
-            self.cache = True
-        else:
-            codes = F.pad(input_ids, (0, 0, 1, 0), "constant", PAD)
-
+        prompt = preprocess(input_ids, batch_size=batch_size, device=device)
+        codes = prompt[:, :-3]
         prompt_len = codes.shape[1]
         input_codes = codes
 
-        for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
+        for i in tqdm(range(max_len + 4 - prompt_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + 4):
             if self.use_generator:
                 logits = yield from self(input_codes, with_preprocess=False, 
                 return_loss=False, with_postprocess=False)
@@ -124,12 +119,7 @@ class MusicGen(nn.Module):
                 codes = prompt[:, :prompt_len + i + 1]
             else:
                 codes = torch.concat([codes, next_token[:, None]], 1)
-            input_codes = codes[:, -1:]
-            
-        if last_chunk:
-            yield postprocess(codes)
-        else:
-            yield codes[:, 1:]
+        yield postprocess(codes)
         
 
     def decode(self, input_ids):

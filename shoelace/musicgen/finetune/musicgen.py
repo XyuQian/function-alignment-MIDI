@@ -109,7 +109,7 @@ class MusicGenLora(nn.Module):
         """
         
         lora_state = torch.load(path + ".lora.pth", map_location="cpu")
-        lora_state = reformat(lora_state)
+        
         self.load_state_dict(lora_state, strict=strict)
         print(f"LoRA weights loaded from: {path}.lora.pth")
 
