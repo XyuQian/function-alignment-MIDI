@@ -116,12 +116,11 @@ class MusicGen(nn.Module):
                     "index": index
                 }
                 logits = yield from self(input_codes, with_preprocess=False, 
-                return_loss=False, with_postprocess=False)
+                return_loss=False, with_postprocess=False, return_val=False)
             else:
                 logits = self(input_codes, with_preprocess=False, return_loss=False, 
-                    with_postprocess=False)
-            if last_chunk:
-                break
+                    with_postprocess=False, return_val=False)
+            
             next_token = sample(logits[:, -1], top_k_val=top_k)
             index = index[:, -1:] if initial else index[:, -1:] + 1
             initial = False
@@ -131,6 +130,8 @@ class MusicGen(nn.Module):
             else:
                 codes = torch.concat([codes, next_token[:, None]], 1)
             input_codes = codes[:, -1:]
+            if last_chunk:
+                break
             
         yield {"output": postprocess(codes)}
         
@@ -145,6 +146,7 @@ class MusicGen(nn.Module):
         elif return_val:
             return next(generator)
         return generator
+        
 
     @torch.no_grad()
     def inference(self, input_ids, **kwargs):
@@ -152,7 +154,7 @@ class MusicGen(nn.Module):
         if self.use_generator:
             return generator
         else:
-            return next(generator)
+            return next(generator)["output"]
 
     def load_compression_model(self):
         if self.compression_model is None:
