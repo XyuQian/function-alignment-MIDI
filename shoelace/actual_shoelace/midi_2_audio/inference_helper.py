@@ -1,5 +1,6 @@
 import torch
 import torch.nn.functional as F
+from shoelace.midi_lm.config import SEG_RES
 
 
 class InferenceHelper:
@@ -25,9 +26,9 @@ class InferenceHelper:
             audio_index = F.pad(x, (1, 0), "constant", 0)
             audio_index = audio_index.to(input_ids.device)
             
-            self.model.inference(model_name="MIDILM", max_len=1,
+            self.model.inference(model_name="MIDILM", max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
                             use_generator=False, top_k=16, 
-                            last_chunk=False, input_ids=input_ids, reset_cache=True)
+                            last_chunk=True, input_ids=input_ids, reset_cache=True)
 
 
             audio_codes = self.model.inference(model_name="AudioLM", 

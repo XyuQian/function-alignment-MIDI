@@ -260,10 +260,11 @@ class Shoelace(nn.Module):
         n_prompts = model_info["n_prompts"]
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
 
-        for i in range(max_len):
+        for i in range(2333333):
             for j in range(model_info["n_layers"]):
                 hidden_a = next(model_gen)
-                
+                if "output" in hidden_a:
+                    break
                 if j % layer_skip == 0:
                     hidden_b = cond_model_cache[j // cond_layer_skip]
                     adapt_output = adapter(
@@ -274,8 +275,10 @@ class Shoelace(nn.Module):
                                                 indices_b=cond_indices,
                                                 attn_mask=None)
                     hidden_a[0]["attn_output"] = adapt_output
+            if "output" in hidden_a:
+                    break
             
-        return next(model_gen)
+        return hidden_a["output"]
 
     def decode(self, input_ids, model_name):
         return self.model_dict[model_name]["model"].decode(input_ids)

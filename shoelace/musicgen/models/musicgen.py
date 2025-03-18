@@ -121,7 +121,7 @@ class MusicGen(nn.Module):
                 codes = torch.concat([codes, next_token[:, None]], 1)
             input_codes = codes[:, -1:]
             
-        yield postprocess(codes)
+        yield {"output": postprocess(codes)}
         
 
     def decode(self, input_ids):
