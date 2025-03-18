@@ -5,9 +5,12 @@ from shoelace.utils.network_utils import sample
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
 from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
-    N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES
+    N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES, EVENT_RES
+from shoelace.utils.network_utils import transform_inputs
 
 import torch
+
+
 
 
 def generate_attention_mask(seq_len: int, attn_window: int, mask_prob: float, device: torch.device) -> torch.Tensor:
@@ -276,20 +279,32 @@ class MIDILM(nn.Module):
 
 
     @torch.no_grad()
-    def yield_inference(self, x, max_len, last_chunk=False, top_k=32, temperature=1.0):
+    def yield_inference(self, x, max_len, last_chunk=False, top_k=32, temperature=1.0, batch_size=None, device=None):
         """
         Performs inference by generating a sequence step-by-step.
         """
 
         decoded_sequence = [None]
         prompt = x
-        cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1)
+        if x is None:
+            midi_index = torch.zeros([batch_size, 1]).to(device)
+            cur_timing = 0
+        else:
+            midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device)
+            midi_index = F.pad(midi_index, (1, 0), "constant", 0)
+            cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1) if x is not None else 0
+
+
         assert cur_timing < max_len
         seg_complete = False
+        index_cursor = cur_timing
         for _ in tqdm(range(max_len - cur_timing), initial=cur_timing, desc="MidiLM Inference", total=max_len):
             seg_complete = False
             while not seg_complete:
                 if self.use_generator:
+                    yield {
+                        "index": midi_index
+                    }
                     decoder_output = yield from self(prompt, return_memory=True, 
                         return_loss=False, with_sos=not self.cache, return_val=False)
                 else:
@@ -304,8 +319,15 @@ class MIDILM(nn.Module):
                                                 temperature=temperature, top_k=top_k)
                 decoded_sequence.append(next_token[:, None])
                 prompt = next_token[:, None]
+
+                if next_token[0, 0] < EVENT_RES:
+                    midi_index = (next_token[:, :1] + index_cursor*SEG_RES).long()
+                else:
+                    midi_index = (torch.zeros_like(next_token[:, :1]) + index_cursor*SEG_RES).long()
+
                 if next_token[0, 0] == SEG_RES:
                     seg_complete = True
+                    index_cursor += 1
                 if last_chunk:
                     break
 

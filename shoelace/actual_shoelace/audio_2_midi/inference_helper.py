@@ -7,7 +7,7 @@ def cut_midi(input_ids, hop_frame, chunk_frame):
     chunk_len = chunk_frame // SEG_RES
     seg_pos = torch.arange(len(input_ids[0])).to(input_ids.device)
     seg_pos = seg_pos[input_ids[0, :, 0] == SEG_RES]
-    return input_ids[:, :seg_pos[hop_len]], input_ids[:, seg_pos[hop_len]: seg_pos[chunk_len]]
+    return input_ids[:, :seg_pos[hop_len]], input_ids[:, seg_pos[hop_len]: seg_pos[chunk_len] + 1]
 
 
 
@@ -49,6 +49,7 @@ class InferenceHelper:
             results.append(prefix)
             
             n_id += 1
+            break
             if n_id > 2:
                 break
         

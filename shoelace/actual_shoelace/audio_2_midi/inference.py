@@ -1,5 +1,6 @@
 import os
 import sys
+import glob
 import torch.nn.functional as F
 import numpy as np
 import torch
@@ -32,8 +33,8 @@ def run_inference(model_folder, output_folder, fid):
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*8)
     model = InferenceHelper(model_folder=model_folder, device=device)
-    audio_data_generator = get_audio_data(f"data/POP909/{fid}/{fid}.mid", 
-                            chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
+    path = glob.glob(f"data/pop909_audio/{fid}_*/original.mp3")[0]
+    audio_data_generator = get_audio_data(path, chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
     midi_codes, audio_codes = model.inference(audio_data_generator, 
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=150)
@@ -46,5 +47,5 @@ if __name__ == "__main__":
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
     fid = sys.argv[2]
-    model_folder = f"exp/midi_2_audio_medium/latest_{model_id}_end"
+    model_folder = f"exp/audio_2_midi_random/latest_{model_id}_end"
     run_inference(model_folder, output_folder, fid)
