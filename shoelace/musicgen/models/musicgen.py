@@ -72,7 +72,8 @@ class MusicGen(nn.Module):
         self.lm.init_qkv()
 
 
-    def yield_forward(self, input_ids, return_loss=True, with_preprocess=True,
+    def yield_forward(self, input_ids, return_loss=True, return_val=True,
+                        with_preprocess=True,
                       with_postprocess=True, **kwargs):
         lm = self.lm
         x = preprocess(input_ids) if with_preprocess else input_ids
@@ -88,6 +89,8 @@ class MusicGen(nn.Module):
 
         if with_postprocess:
             pred = postprocess(pred)
+        if return_val:
+            return pred
         yield pred
 
 
@@ -116,10 +119,10 @@ class MusicGen(nn.Module):
                     "index": index
                 }
                 logits = yield from self(input_codes, with_preprocess=False, 
-                return_loss=False, with_postprocess=False)
+                return_loss=False, with_postprocess=False, return_val=True)
             else:
                 logits = self(input_codes, with_preprocess=False, return_loss=False, 
-                    with_postprocess=False)
+                    with_postprocess=False, return_val=False)
             
             next_token = sample(logits[:, -1], top_k_val=top_k)
             index = index[:, -1:] if initial else index[:, -1:] + 1
@@ -140,12 +143,10 @@ class MusicGen(nn.Module):
         return postprocess(input_ids)
             
     def forward(self, input_ids, return_val=True, **kwargs):
-        generator = self.yield_forward(input_ids, **kwargs)
-        if self.use_generator:
+        generator = self.yield_forward(input_ids, return_val=return_val, **kwargs)
+        if self.use_generator or return_val:
             return generator
-        elif return_val:
-            return next(generator)
-        return generator
+        return next(generator)
         
 
     @torch.no_grad()

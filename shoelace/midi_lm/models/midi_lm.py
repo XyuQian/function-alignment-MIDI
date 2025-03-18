@@ -211,7 +211,7 @@ class MIDILM(nn.Module):
         self.pos_encoding.reset_cache()
         self.transformer_decoder.reset_cache()
 
-    def yield_forward(self, x, return_loss=True, return_memory=False, with_sos=True, **kwargs):
+    def yield_forward(self, x, return_loss=True, return_memory=False, return_val=False, with_sos=True, **kwargs):
         """
         Forward pass for MIDI language modeling.
         """
@@ -236,7 +236,10 @@ class MIDILM(nn.Module):
                                                              mask=None)
         
         if return_memory:
-            yield decoder_output
+            if return_val:
+                return decoder_output
+            else:
+                yield decoder_output
 
         memory = decoder_output.flatten(0, 1)[:, None]
         baby_input_x = F.pad(x[:, :, :-1], (1, 0), "constant", SOS).flatten(0, 1)
@@ -285,18 +288,18 @@ class MIDILM(nn.Module):
         """
 
         decoded_sequence = [None]
-        prompt = x
+        
         if x is None:
-            midi_index = torch.zeros([batch_size, 2]).to(device)
+            midi_index = torch.zeros([batch_size, 2]).to(device).long()
             cur_timing = 0
-            x = torch.zeros([batch_size, 1, 6]).to(device) + PAD
+            x = (torch.zeros([batch_size, 1, 6]).to(device) + PAD).long()
             x[:, :, 0] = SEG_RES
         else:
             midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device)
             midi_index = F.pad(midi_index, (1, 0), "constant", 0)
             cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1) if x is not None else 0
 
-
+        prompt = x
         assert cur_timing < max_len
         seg_complete = False
         index_cursor = cur_timing
@@ -308,10 +311,10 @@ class MIDILM(nn.Module):
                         "index": midi_index
                     }
                     decoder_output = yield from self(prompt, return_memory=True, 
-                        return_loss=False, with_sos=not self.cache, return_val=False)
+                        return_loss=False, with_sos=not self.cache, return_val=True)
                 else:
                     decoder_output = self(prompt, return_memory=True, 
-                        return_loss=False, with_sos=not self.cache, return_val=True)
+                        return_loss=False, with_sos=not self.cache, return_val=False)
                 self.cache = True
             
                 decoder_output = decoder_output[:, -1:]
@@ -339,12 +342,10 @@ class MIDILM(nn.Module):
         
 
     def forward(self, input_ids, return_val=True, **kwargs):
-        generator = self.yield_forward(input_ids, **kwargs)
-        if self.use_generator:
+        generator = self.yield_forward(input_ids, return_val=return_val, **kwargs)
+        if self.use_generator or return_val:
             return generator
-        elif return_val:
-            return next(generator)
-        return generator
+        return next(generator)
 
     @torch.no_grad()
     def inference(self, input_ids, **kwargs):
