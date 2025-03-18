@@ -276,7 +276,7 @@ class MIDILM(nn.Module):
 
 
     @torch.no_grad()
-    def yield_inference(self, x, max_len, last_chunk=True, top_k=32, temperature=1.0):
+    def yield_inference(self, x, max_len, last_chunk=False, top_k=32, temperature=1.0):
         """
         Performs inference by generating a sequence step-by-step.
         """
