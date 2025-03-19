@@ -72,5 +72,5 @@ if __name__ == "__main__":
     os.makedirs(output_folder, exist_ok=True)
     model_id = sys.argv[1]
     fid = sys.argv[2]
-    model_folder = f"exp/midi_2_audio_medium/latest_{model_id}_end"
+    model_folder = f"exp/midi_2_audio_medium_random/latest_{model_id}_end"
     run_inference(model_folder, output_folder, fid)

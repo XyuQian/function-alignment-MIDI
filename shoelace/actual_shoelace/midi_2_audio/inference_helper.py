@@ -39,7 +39,7 @@ class InferenceHelper:
             
             
             n_id += 1
-            if n_id > 1:
+            if n_id > 4:
                 break
             
         results.append(audio_prompt)

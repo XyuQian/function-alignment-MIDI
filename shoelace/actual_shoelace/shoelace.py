@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import os
+import numpy as np
 
 # Assuming these are imported from your own library or files
 from shoelace.utils.network_utils import freeze, print_params
@@ -42,13 +43,31 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
         another_mask = None
     else:
         assert mask_type == "bi_mask"
-        
-   
-    # Pad the masks to account for "no mask" or "CLS" positions.
-    base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
-    # mask_b = F.pad(mask_b, (1, 0), "constant", 0)
+        r = np.random.randint(3)
+        another_mask = torch.zeros(b_len, a_len)
+        if r == 0:
+            random_mask = torch.rand_like(base_mask)
+            base_mask[random_mask < mask_ratio] = float('-inf')
+            random_mask = torch.rand_like(another_mask)
+            another_mask[another_mask < mask_ratio] = float('-inf')
 
-    return base_mask.to(device), another_mask
+        if r == 1:
+            random_mask = torch.rand_like(base_mask)
+            base_mask[random_mask < mask_ratio] = float('-inf')
+            another_mask = another_mask + float('-inf')
+        
+        if r == 2:
+            random_mask = torch.rand_like(another_mask)
+            another_mask[another_mask < mask_ratio] = float('-inf')
+            base_mask = base_mask + float('-inf')
+
+
+    # Pad the masks to account for "no mask" or "CLS" positions.
+    base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0).to(device)
+    if another_mask is not None:
+        another_mask = F.pad(another_mask, (n_prompts, 0), "constant", 0).to(device)
+
+    return base_mask, another_mask
 
 
 def parse_dict(model_config: dict, model_names: str) -> dict:
@@ -205,27 +224,26 @@ class Shoelace(nn.Module):
                 main_seq_len, cond_seq_len, device = main_hidden[0]["query"].shape[1], \
                     cond_hidden[0]["query"].shape[1], main_hidden[0]["query"].device
                 
-            
+            mask_a, mask_b = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
             if i % layer_skips[main_model_name] == 0 and main_adapter:
                 
-                mask, _ = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
+                
                 adapt_output_a = main_adapter(layer_idx=i // layer_skips[main_model_name],
                                                 hidden_a=main_hidden[0], 
                                                 hidden_b=cond_hidden[0], 
                                                 indices_a=main_indices,
                                                 indices_b=cond_indices,
-                                                attn_mask=mask)
+                                                attn_mask=mask_a)
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
                 main_hidden[0]["attn_output"] = adapt_output_a
 
             if i % layer_skips[cond_model_name] == 0 and self.bi_direction and cond_adapter:
-                mask, _ = create_mask(cond_seq_len, main_seq_len, n_prompts[1], self.mask_type, device)
                 adapt_output_b = cond_adapter(layer_idx=i // layer_skips[cond_model_name],
                                                 hidden_a=cond_hidden[0], 
                                                 hidden_b=main_hidden[0],
                                                 indices_a=cond_indices,
                                                 indices_b=main_indices,
-                                                attn_mask=mask)
+                                                attn_mask=mask_b)
                 cond_hidden[0]["attn_output"] = adapt_output_b
 
         # Gather the final outputs (or loss values) from the generators.
@@ -234,7 +252,7 @@ class Shoelace(nn.Module):
         else:
             
             loss = {main_model_name: next(gen_dict[main_model_name])}
-        return sum([loss[k] for k in loss])
+        return loss
 
 
 

@@ -5,9 +5,30 @@ from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
 def cut_midi(input_ids, hop_frame, chunk_frame):
     hop_len = hop_frame // SEG_RES
     chunk_len = chunk_frame // SEG_RES
-    seg_pos = torch.arange(len(input_ids[0])).to(input_ids.device)
-    seg_pos = seg_pos[input_ids[0, :, 0] == SEG_RES]
-    return input_ids[:, :seg_pos[hop_len]], input_ids[:, seg_pos[hop_len]: seg_pos[chunk_len] + 1]
+    input_ids = input_ids[input_ids[:, 0] < RES_EVENT]
+
+    seg_pos = torch.arange(len(input_ids)).to(input_ids.device)
+    seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
+    prefix = input_ids[:seg_pos[hop_len]]
+    suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
+    sustain = hop_len + 1
+
+    res_events = []
+    for event in prefix:
+        if event[0] == SEG_RES:
+            sustain -= 1
+            continue
+
+        if event[3] >= hop_len:
+            new_event = event + 0
+            new_event[0] = RES_EVENT
+            new_event[3] = event[3] - sustain
+            res_events.append(new_event)
+    res_event = torch.stack(res_events, 0)
+    return prefix, torch.concat([suffix[:1], res_event, suffix[1:]], 0)
+
+
+    
 
 
 
@@ -46,12 +67,15 @@ class InferenceHelper:
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
-            prefix, midi_prompt = cut_midi(midi_codes, hop_frame, chunk_frame)
-            results.append(prefix)
+
+            prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_frame, chunk_frame)
+            print("prefix", prefix)
+            print("midi_prompt", midi_prompt)
+            results.append(prefix.unsqueeze(0))
+            midi_prompt = midi_prompt.unsqueeze(0)
             
             n_id += 1
-            break
-            if n_id > 2:
+            if n_id > 3:
                 break
         
         
