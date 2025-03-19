@@ -74,8 +74,8 @@ class InferenceHelper:
             midi_prompt = midi_prompt.unsqueeze(0)
             
             n_id += 1
-            if n_id > 3:
-                break
+            # if n_id > 3:
+            #     break
         
         
         results.append(remove_head(midi_prompt))
