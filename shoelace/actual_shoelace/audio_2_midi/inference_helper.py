@@ -11,11 +11,23 @@ def cut_midi(input_ids, hop_frame, chunk_frame):
     seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
     prefix = input_ids[:seg_pos[hop_len]]
     suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
-    return prefix, suffix
     
+    sustain = hop_len + 1
+    res_events = []
+    for i, event in enumerate(input_ids):
+        if event[0] == SEG_RES:
+            sustain -= 1
+            continue
 
-
-    
+        if event[3] >= sustain:
+            new_event = event + 0
+            new_event[0] = RES_EVENT
+            new_event[3] = event[3] - sustain
+            res_events.append(new_event)
+    if len(res_events) == 0:
+        return prefix, suffix
+    res_event = torch.stack(res_events, 0)
+    return prefix, torch.concat([suffix[:1], res_event, suffix[1:]], 0)
 
 
 
