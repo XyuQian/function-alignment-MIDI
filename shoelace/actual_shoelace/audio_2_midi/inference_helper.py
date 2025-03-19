@@ -7,25 +7,35 @@ def cut_midi(input_ids, hop_frame, chunk_frame):
     chunk_len = chunk_frame // SEG_RES
     input_ids = input_ids[input_ids[:, 0] < RES_EVENT]
 
-    seg_pos = torch.arange(len(input_ids)).to(input_ids.device)
-    seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
-    prefix = input_ids[:seg_pos[hop_len]]
-    suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
-    sustain = hop_len + 1
+    # seg_pos = torch.arange(len(input_ids)).to(input_ids.device)
+    # seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
+    # prefix = input_ids[:seg_pos[hop_len]]
+    # suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
+    # return prefix, suffix
 
-    res_events = []
-    for event in prefix:
+    sustain = hop_len + 1
+    split_idx = 0
+    
+    for i, event in enumerate(input_ids):
         if event[0] == SEG_RES:
             sustain -= 1
+            split_idx = i
             continue
 
-        if event[3] >= hop_len:
-            new_event = event + 0
-            new_event[0] = RES_EVENT
-            new_event[3] = event[3] - sustain
-            res_events.append(new_event)
-    res_event = torch.stack(res_events, 0)
-    return prefix, torch.concat([suffix[:1], res_event, suffix[1:]], 0)
+        if event[3] >= sustain:
+            break
+
+    sustain = chunk_len - hop_len + 1
+    end_idx = 0
+    for i, event in enumerate(input_ids[split_idx]):
+        if event[0] == SEG_RES:
+            sustain -= 1
+            end_idx = i
+            continue
+        if event[3] >= sustain:
+            break
+    print(split_idx, end_idx)
+    return input_ids[:split_idx], input_ids[split_idx: split_idx + end_idx]
 
 
     
