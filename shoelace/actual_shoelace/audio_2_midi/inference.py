@@ -31,7 +31,7 @@ def get_audio_data(path, chunk_frame, hop_frame, device):
 def run_inference(model_folder, output_folder, fid):
     """Runs inference using a trained MIDI language model."""
     chunk_frame = int(FRAME_RATE*15.36)
-    hop_frame = int(FRAME_RATE*8)
+    hop_frame = int(FRAME_RATE*7.68)
     model = InferenceHelper(model_folder=model_folder, device=device)
     path = glob.glob(f"data/pop909_audio/{fid}-*/original.mp3")[0]
     audio_data_generator = get_audio_data(path, chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
