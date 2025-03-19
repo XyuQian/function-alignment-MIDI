@@ -4,32 +4,15 @@ from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
 
 def cut_midi(input_ids, hop_frame, chunk_frame):
     hop_len = hop_frame // SEG_RES
-    chunk_len = chunk_frame // SEG_RES
+    chunk_len = chunk_frame // SEG_RES - 2
     input_ids = input_ids[input_ids[:, 0] < RES_EVENT]
 
     seg_pos = torch.arange(len(input_ids)).to(input_ids.device)
     seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
-    clean_pos = torch.zeros_like(seg_pos)
-    # prefix = input_ids[:seg_pos[hop_len]]
-    # suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
-    # return prefix, suffix
-    cur_timing = 0
-    for event in input_ids:
-        if event[0] == SEG_RES:
-            cur_timing += 1
-            continue
-        if event[3] >= 1:
-            clean_pos[cur_timing : cur_timing + event[3]] = 1
-            
-    while clean_pos[hop_len] == 1:
-        hop_len -=1
-        assert hop_len > 0
-
-    while clean_pos[chunk_len] == 1:
-        chunk_len -=1
-        assert chunk_len > 0
-        
-    return input_ids[:seg_pos[hop_len]], input_ids[seg_pos[hop_len]: seg_pos[chunk_len]]
+    prefix = input_ids[:seg_pos[hop_len]]
+    suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
+    return prefix, suffix
+    
 
 
     
