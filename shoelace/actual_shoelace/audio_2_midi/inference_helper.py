@@ -2,9 +2,7 @@ import torch
 import torch.nn.functional as F
 from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
 
-def cut_midi(input_ids, hop_frame, chunk_frame):
-    hop_len = hop_frame // SEG_RES
-    chunk_len = chunk_frame // SEG_RES - 2
+def cut_midi(input_ids, hop_len, chunk_len):
     input_ids = input_ids[input_ids[:, 0] < RES_EVENT]
 
     seg_pos = torch.arange(len(input_ids)).to(input_ids.device)
@@ -14,7 +12,7 @@ def cut_midi(input_ids, hop_frame, chunk_frame):
     
     sustain = hop_len + 1
     res_events = []
-    for i, event in enumerate(input_ids):
+    for i, event in enumerate(prefix):
         if event[0] == SEG_RES:
             sustain -= 1
             continue
@@ -24,6 +22,7 @@ def cut_midi(input_ids, hop_frame, chunk_frame):
             new_event[0] = RES_EVENT
             new_event[3] = event[3] - sustain
             res_events.append(new_event)
+
     if len(res_events) == 0:
         return prefix, suffix
     res_event = torch.stack(res_events, 0)
@@ -51,6 +50,7 @@ class InferenceHelper:
         midi_prompt = None
         n_id = 0
         chunk_len = chunk_frame // SEG_RES
+        hop_len = hop_frame // SEG_RES
         results = []
         for input_ids, audio_index in input_ids_generator:
             if audio_index is None:
@@ -61,13 +61,13 @@ class InferenceHelper:
 
 
             midi_codes = self.model.inference(model_name="MIDILM", 
-                            cond_model_name="AudioLM", max_len=chunk_len,
+                            cond_model_name="AudioLM", max_len=chunk_len - 2,
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
 
-            prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_frame, chunk_frame)
+            prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_len, chunk_len - 2)
             print("prefix", prefix)
             print("midi_prompt", midi_prompt)
             results.append(prefix.unsqueeze(0))
