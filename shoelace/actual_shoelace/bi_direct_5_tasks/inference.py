@@ -82,8 +82,8 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
 
 def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks, n_prompts):
     """Runs inference using a trained MIDI language model."""
-    model_folder = os.path.join(model_folder, "midi_2_audio")
-    os.makedirs(model_folder, exist_ok=True)
+    output_folder = os.path.join(output_folder, "midi_2_audio")
+    os.makedirs(output_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
     model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, device=device)
@@ -100,8 +100,8 @@ def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks, n
 
 def run_inference_audio_2_midi(model_folder, output_folder, input_path, tasks, n_prompts):
     """Runs inference using a trained MIDI language model."""
-    model_folder = os.path.join(model_folder, "audio_2_midi")
-    os.makedirs(model_folder, exist_ok=True)
+    output_folder = os.path.join(output_folder, "audio_2_midi")
+    os.makedirs(output_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*5.12)
     model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, device=device)
