@@ -6,16 +6,16 @@ from .utils import get_device
 from demucs.audio import convert_audio
 
 sys.path.insert(0, os.path.join(sys.path[0], "../../.."))
-from shoelace.musicgen.models.loaders import load_compression_model, load_lm_model
+from shoelace.musicgen.models.loaders import load_compression_model
 from shoelace.musicgen.data.audio import audio_write
 
 cache_dir = os.environ.get('MUSICGEN_ROOT', None)
 name = None
 device = get_device()
-compression_model = load_compression_model("large", device=device, cache_dir=cache_dir)
+# device = "cpu"
+compression_model = load_compression_model("medium", device=device, cache_dir=cache_dir)
 compression_model.eval()
-lm = load_lm_model("large", device=device, cache_dir=cache_dir)
-lm.eval()
+
 sample_rate = 32000
 
 
@@ -27,12 +27,6 @@ def extract_rvq(x, sr=32000):
     return seq.squeeze(0)
 
 
-def extract_musicgen_emb(seq):
-    seq = seq[None, ...]
-    with torch.no_grad():
-        emb = sum([lm.emb[i](seq[:, i]) for i in range(4)])
-    return emb.squeeze(0)
-
 
 def decode(tokens):
     with torch.no_grad():
@@ -42,6 +36,7 @@ def decode(tokens):
 
 def save_rvq(output_list, tokens):
     wavs = []
+    print(tokens.shape)
     with torch.no_grad():
         gen_audio = compression_model.decode(tokens, None)
         for i in range(gen_audio.size(0)):

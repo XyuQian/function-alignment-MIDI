@@ -29,44 +29,19 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
             - mask_b: A cross-attention mask from B to A.
     """
     base_mask = torch.zeros(a_len, b_len)
-    if mask_type == "random":
+    r = np.random.rand()
+    print(a_len, b_len)
+    if r < .5:
         random_mask = torch.rand_like(base_mask)
         # Set positions to -inf based on the mask ratio to block attention.
         base_mask[random_mask < mask_ratio] = float('-inf')
-        another_mask = None
-    elif mask_type == "full":
-        another_mask = None
-    else:
-        assert mask_type == "bi_mask"
-        r = np.random.randint(3)
-        another_mask = torch.zeros(b_len, a_len)
-        if r == 0:
-            random_mask = torch.rand_like(base_mask)
-            base_mask[random_mask < mask_ratio] = float('-inf')
-            random_mask = torch.rand_like(another_mask)
-            another_mask[random_mask < mask_ratio] = float('-inf')
-            
-
-        if r == 1:
-            random_mask = torch.rand_like(base_mask)
-            base_mask[random_mask < mask_ratio] = float('-inf')
-            another_mask = another_mask + float('-inf')
-            
         
-        if r == 2:
-            random_mask = torch.rand_like(another_mask)
-            another_mask[random_mask < mask_ratio] = float('-inf')
-            base_mask = base_mask + float('-inf')
-            
+    else:
+        base_mask = base_mask + float('-inf')
 
-
-    # Pad the masks to account for "no mask" or "CLS" positions.
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0).to(device)
-    if another_mask is not None:
-        another_mask = F.pad(another_mask, (n_prompts, 0), "constant", 0).to(device)
-
-    return base_mask, another_mask
-
+    
+    return base_mask
 
 def parse_dict(model_config: dict, model_names: str) -> dict:
     """
@@ -92,25 +67,20 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 
 
 class Shoelace(nn.Module):
-    def __init__(self, device : torch.device, mask_type: str, model_configs: dict, bi_direction: bool = False, model_names: list = None):
+    def __init__(self, device : torch.device, mask_type: str, model_configs: dict, 
+            model_pairs: dict):
         """
         Initialize the Shoelace model with given configurations.
 
         Args:
             model_configs (dict): A dictionary of model configurations.
-            bi_direction (bool): Flag to indicate if bidirectional cross-attention is used.
-            model_names (list): List containing two model names.
         """
         super().__init__()
-        if model_names is None or len(model_names) != 2:
-            raise ValueError("model_names must be a list containing exactly two names.")
-
-        self.bi_direction = bi_direction  # Save for use in forward()
-
+        
+    
         models = nn.ModuleList()
         adapters = nn.ModuleList()
         
-
         # Initialize models and load weights.
         for key, config in model_configs.items():
             if "device" in config["kwargs"]:
@@ -122,55 +92,38 @@ class Shoelace(nn.Module):
             config["model_obj"] = model_instance
             
             # Freeze all models except the primary one when not in bidirectional mode.
-            if not bi_direction and key != model_names[0]:
+            if model_pairs[key]["is_freeze"]:
                 freeze(model_instance)
                 config["adapter"] = None
+            else:
+                adapter = SholaceParam(
+                    n_layers=config["n_layers"],
+                    in_dim=model_configs[model_pairs[key]["condition_model"]]["emb_dim"],
+                    low_rank_dim=config["low_rank_dim"],
+                    out_dim=config["emb_dim"],
+                    num_heads=config["num_heads"],
+                    n_out_indices=config["n_indices"],
+                    n_in_indices=config["n_indices"],
+                    n_prompts=config["n_prompts"],
+                    tasks=config["tasks"]
+                )
+                adapters.append(adapter)
+                config["adapter"] = adapter
+                config["cond_model_name"] = model_pairs[key]["condition_model"]
 
-        # Create cross-attention adapters.
-        # Adapter for model_names[0]: uses embeddings from model_names[1].
-        adapter_a = SholaceParam(
-            n_layers=model_configs[model_names[0]]["n_layers"],
-            in_dim=model_configs[model_names[1]]["emb_dim"],
-            low_rank_dim=model_configs[model_names[0]]["low_rank_dim"],
-            out_dim=model_configs[model_names[0]]["emb_dim"],
-            num_heads=model_configs[model_names[0]]["num_heads"],
-            n_out_indices=model_configs[model_names[0]]["n_indices"],
-            n_in_indices=model_configs[model_names[1]]["n_indices"],
-            n_prompts=model_configs[model_names[0]]["n_prompts"]
-        )
-        adapters.append(adapter_a)
-        model_configs[model_names[0]]["adapter"] = adapter_a
-
-        # Create second adapter if bidirectional attention is enabled.
-        if bi_direction:
-            adapter_b = SholaceParam(
-                n_layers=model_configs[model_names[1]]["n_layers"],
-                in_dim=model_configs[model_names[0]]["emb_dim"],
-                low_rank_dim=model_configs[model_names[1]]["low_rank_dim"],
-                out_dim=model_configs[model_names[1]]["emb_dim"],
-                num_heads=model_configs[model_names[1]]["num_heads"],
-                n_out_indices=model_configs[model_names[1]]["n_indices"],
-                n_in_indices=model_configs[model_names[0]]["n_indices"],
-                n_prompts=model_configs[model_names[1]]["n_prompts"]
-            )
-            adapters.append(adapter_b)
-            model_configs[model_names[1]]["adapter"] = adapter_b
-        else:
-            model_configs[model_names[1]]["adapter"] = None
 
         # Parse and store models' dictionaries.
         
-        self.model_dict = parse_dict(model_configs, model_names)
+        self.model_dict = model_configs
         self.models = models
         self.adapters = adapters
-        self.model_names = model_names
         self.mask_type = mask_type
 
         print_params(self)
 
     def reset_cache(self):
         for model_name in self.model_dict:
-            self.model_dict[model_name]["model"].reset_cache()
+            self.model_dict[model_name]["model_obj"].reset_cache()
 
     def forward(self, args: dict) -> dict:
         """
@@ -184,69 +137,51 @@ class Shoelace(nn.Module):
             dict: Dictionary with computed loss (or outputs) for each model.
         """
         gen_dict = {}
-        model_names = self.model_names
         model_dict = self.model_dict
 
         # Initialize generators for each model.
-        for model_name in model_names:
+        for model_name, config in model_dict.items():
             kwargs = args[model_name]["args"]
-            gen_dict[model_name] = model_dict[model_name]["model"](**kwargs)
+            gen_dict[model_name] = config["model_obj"](**kwargs)
 
         # Determine maximum layers and layer skipping values.
-        max_n_layers = max(model_dict[model_name]["n_layers"] for model_name in model_names)
-        layer_skips = {
-            model_name : model_dict[model_name]["layer_skip"] for model_name in model_names
-        }
-
-        main_model_name = model_names[0]
-        cond_model_name = model_names[1]
-
-        main_adapter = model_dict[main_model_name]["adapter"]
-        cond_adapter = model_dict[cond_model_name]["adapter"]
-
-        main_indices = args[main_model_name]["indices"]
-        cond_indices = args[cond_model_name]["indices"]
-
-
-        
-        n_prompts = [model_dict[model_name]["n_prompts"] for model_name in [main_model_name, cond_model_name]]
-
+        max_n_layers = max(config["n_layers"] for _, config in model_dict.items())
+        hiddens = {}
+        masks = {}
         # Iterate through layers and perform cross-attention when appropriate.
         for i in range(max_n_layers):
-            if i % layer_skips[main_model_name] == 0:
-                main_hidden = next(gen_dict[main_model_name])
-            if i % layer_skips[cond_model_name] == 0:
-                cond_hidden = next(gen_dict[cond_model_name])
-
-            if i == 0:
-                main_seq_len, cond_seq_len, device = main_hidden[0]["query"].shape[1], \
-                    cond_hidden[0]["query"].shape[1], main_hidden[0]["query"].device
-                mask_a, mask_b = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
-            if i % layer_skips[main_model_name] == 0 and main_adapter:
-                adapt_output_a = main_adapter(layer_idx=i // layer_skips[main_model_name],
-                                                hidden_a=main_hidden[0], 
-                                                hidden_b=cond_hidden[0], 
-                                                indices_a=main_indices,
-                                                indices_b=cond_indices,
-                                                attn_mask=mask_a)
-                # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
-                main_hidden[0]["attn_output"] = adapt_output_a
-
-            if i % layer_skips[cond_model_name] == 0 and self.bi_direction and cond_adapter:
-                adapt_output_b = cond_adapter(layer_idx=i // layer_skips[cond_model_name],
-                                                hidden_a=cond_hidden[0], 
-                                                hidden_b=main_hidden[0],
-                                                indices_a=cond_indices,
-                                                indices_b=main_indices,
-                                                attn_mask=mask_b)
-                cond_hidden[0]["attn_output"] = adapt_output_b
-
-        # Gather the final outputs (or loss values) from the generators.
-        if self.bi_direction:
-            loss = {name: next(gen_dict[name]) for name in gen_dict}
-        else:
             
-            loss = {main_model_name: next(gen_dict[main_model_name])}
+            for model_name, config in model_dict.items():
+                
+                if i % config["layer_skip"] == 0:
+                    hiddens[model_name] = next(gen_dict[model_name])
+
+            for model_name, config in model_dict.items():
+                cond_model_name = config["cond_model_name"]
+                hidden_a = hiddens[model_name]
+                hidden_b = hiddens[cond_model_name]
+                n_prompts = config["n_prompts"]
+                
+
+                if i == 0:
+                    cond_model_name = config["cond_model_name"]
+                    main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
+                        hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
+                    masks[model_name] = create_mask(main_seq_len, cond_seq_len, n_prompts, self.mask_type, device)
+                    
+                
+                if i % config["layer_skip"] == 0 and config["adapter"]:
+                    adapt_output = config["adapter"](layer_idx=i // config["layer_skip"],
+                                                hidden_a=hidden_a[0], 
+                                                hidden_b=hidden_b[0], 
+                                                indices_a=args[model_name]["indices"],
+                                                indices_b=args[cond_model_name]["indices"],
+                                                tasks=args[model_name]["tasks"],
+                                                attn_mask=masks[model_name])
+                # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.
+                    hidden_a[0]["attn_output"] = adapt_output
+
+        loss = {name: next(gen_dict[name]) for name in gen_dict}
         return loss
 
 
@@ -299,7 +234,7 @@ class Shoelace(nn.Module):
         return main_indices["output"]
 
     def decode(self, input_ids, model_name):
-        return self.model_dict[model_name]["model"].decode(input_ids)
+        return self.model_dict[model_name]["model_obj"].decode(input_ids)
 
     def load_weights(self, model_folder):
         state = torch.load(os.path.join(model_folder, "adapters.pth"))
@@ -308,7 +243,7 @@ class Shoelace(nn.Module):
         
         model_dict = self.model_dict
         for model_name in model_dict:
-            model = model_dict[model_name]["model"]
+            model = model_dict[model_name]["model_obj"]
             weights_folder = os.path.join(model_folder, model_name)
             model.load_weights(weights_folder)
 
@@ -325,7 +260,7 @@ class Shoelace(nn.Module):
         torch.save(state, os.path.join(model_folder, "adapters.pth"))
         model_dict = self.model_dict
         for model_name in model_dict:
-            model = model_dict[model_name]["model"]
+            model = model_dict[model_name]["model_obj"]
             weights_folder = os.path.join(model_folder, model_name)
             model.save_weights(weights_folder)
 

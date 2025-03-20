@@ -47,6 +47,7 @@ class PositionalEncoding(nn.Module):
 class LowRankMultiheadAttention(nn.Module):
     def __init__(self, in_dim: int, out_dim: int, 
             num_heads: int, 
+            tasks: list,
             low_rank_dim: int = 64, 
             n_in_indices: int = 1,
             n_out_indices: int = 1,
@@ -71,24 +72,26 @@ class LowRankMultiheadAttention(nn.Module):
         self.q_pos_linear =  create_low_rank_mlp(out_dim, low_rank_dim, out_dim)
 
 
-        self.prompt = nn.Parameter(torch.randn(1, n_prompts, in_dim), requires_grad=True)
+
+        self.prompt = nn.Parameter(torch.randn(len(tasks), n_prompts, in_dim), requires_grad=True)
         self.gates = nn.Parameter(torch.zeros(1), requires_grad=True)
+        self.tasks = {
+            task : i for i, task in enumerate(tasks)
+        }
 
-
-    
-
-    def forward(self, pe, hidden_a, hidden_b, indices_a, indices_b, attn_mask):
+    def forward(self, pe, hidden_a, hidden_b, indices_a, indices_b, tasks, attn_mask):
         vanilla_attn_output = hidden_a["attn_output"]
+        
+        prompt = torch.stack([self.prompt[self.tasks[t]] for t in tasks], 0)
 
         q = hidden_a["q"]
         
         if hidden_b is None:
-            kv_x = self.prompt.repeat(len(q), 1, 1)
+            kv_x = prompt
             key_pos = torch.zeros([len(kv_x), kv_x.shape[1], self.embed_dim]).to(kv_x.device)
             
         else:
             kv_x = hidden_b["query"]
-            prompt = self.prompt.repeat(len(kv_x), 1, 1)
             key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
             kv_x = torch.concat([prompt, kv_x], 1)
         
