@@ -12,7 +12,7 @@ from shoelace.midi_lm.models.config import SEG_RES, PAD
 from shoelace.datasets.preprocess_midi import load_midi
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.datasets.utils import decode
-from shoelace.actual_shoelace.bi_direct_5_tasks.inference_helper import InferenceHelper
+from shoelace.actual_shoelace.inference_helper import InferenceHelper
 
 device = "cuda"
 SEQ_LEN = 512
@@ -43,10 +43,9 @@ def get_midi_data(path, chunk_frame, hop_frame, device, task):
     chunk_len = int(chunk_frame//SEG_RES)
     hop_len = int(hop_frame//SEG_RES)
     for st_id in range(0, len(sos) - chunk_len, hop_len):
-        
         event_st_id = sos[st_id]
         event_ed_id = sos[st_id + chunk_len]
-        print(st_id, st_id + chunk_len, event_st_id, event_ed_id)
+        
         if st_id + 1 < len(res_sos):
             res_st_id = res_sos[st_id]
             res_ed_id = res_sos[st_id + 1]
@@ -92,7 +91,7 @@ def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks, n
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
     generated_codes, input_ids = model.midi_2_audio(midi_data_generator, 
-                chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=150, tasks=tasks)
+                chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=100, tasks=tasks)
 
     fname = input_path.split("/")[-1].split(".mid")[0]
     decode(os.path.join(output_folder, f"{fname}.mid"), input_ids[0].cpu().numpy())

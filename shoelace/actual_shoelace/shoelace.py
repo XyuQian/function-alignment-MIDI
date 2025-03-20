@@ -95,6 +95,8 @@ class Shoelace(nn.Module):
             # Freeze all models except the primary one when not in bidirectional mode.
             if model_pairs[key]["is_freeze"]:
                 freeze(model_instance)
+            
+            if model_pairs[key]["condition_model"] is None:
                 config["adapter"] = None
             else:
                 adapter = SholaceParam(
@@ -164,14 +166,11 @@ class Shoelace(nn.Module):
                 hidden_a = hiddens[model_name]
                 hidden_b = hiddens[cond_model_name]
                 
+                cond_model_name = config["cond_model_name"]
+                main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
+                    hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
+                masks[model_name] = create_mask(main_seq_len, cond_seq_len, self.n_prompts, self.mask_type, device)
                 
-
-                if i == 0:
-                    cond_model_name = config["cond_model_name"]
-                    main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
-                        hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
-                    masks[model_name] = create_mask(main_seq_len, cond_seq_len, self.n_prompts, self.mask_type, device)
-                    
                 
                 if i % config["layer_skip"] == 0 and config["adapter"]:
                     adapt_output = config["adapter"](layer_idx=i // config["layer_skip"],
@@ -196,7 +195,7 @@ class Shoelace(nn.Module):
         
         model_dict = self.model_dict
         model_info = model_dict[model_name]
-        model = model_info["model"]
+        model = model_info["model_obj"]
         model.reset_cache()
         
         model.set_use_generator(use_generator)
@@ -204,7 +203,7 @@ class Shoelace(nn.Module):
         if not use_generator:
             return model_gen
         
-        cond_model = model_dict[cond_model_name]["model"]
+        cond_model = model_dict[cond_model_name]["model_obj"]
         if reset_cache:
             cond_model.reset_cache()
         adapter = model_info["adapter"]

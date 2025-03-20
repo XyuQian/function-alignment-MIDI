@@ -22,7 +22,8 @@ MODEL_FACTORY = {
         "emb_dim": 1536,
         "num_heads": 24,
         "steps": 16,
-        "checkpoint_path": None
+        "checkpoint_path": None,
+        "tasks": ["vocals", "accompaniment", "beats", "chords", "full"]
     },
     "MIDILM": {
         "model": MIDILMLora,
@@ -40,6 +41,42 @@ MODEL_FACTORY = {
         "num_heads": 8,
         "steps": 1,
         "seq_len": 0,
-        "checkpoint_path": None
+        "checkpoint_path": None,
+        "tasks": ["melody", "accompaniment", "beats", "chords", "full"]
     },
 }
+
+MODEL_PAIRS = {
+    "midi_2_audio":{
+        "MIDILM":{
+            "is_freeze": False,
+            "condition_model": None
+        },
+        "AudioLM":{
+            "is_freeze": False,
+            "condition_model": "MIDILM"
+        }
+    },
+    "audio_2_midi":{
+        "MIDILM":{
+            "is_freeze": False,
+            "condition_model": "AudioLM"
+        },
+        "AudioLM":{
+            "is_freeze": False,
+            "condition_model": None
+        }
+    },
+    "bi_di":{
+        "MIDILM":{
+            "is_freeze": False,
+            "condition_model": "AudioLM"
+        },
+        "AudioLM":{
+            "is_freeze": False,
+            "condition_model": "MIDILM"
+        }
+    }
+
+}
+

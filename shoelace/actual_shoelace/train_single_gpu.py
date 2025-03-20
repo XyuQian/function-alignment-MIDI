@@ -13,7 +13,7 @@ from tqdm import tqdm
 from shoelace.actual_shoelace.data_loader import ShoelaceDataset as Dataset
 from shoelace.actual_shoelace.data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.shoelace import Shoelace as Model
-from shoelace.actual_shoelace.midi_2_audio.config import MODEL_FACTORY
+from shoelace.actual_shoelace.config import MODEL_FACTORY, MODEL_PAIRS
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -46,6 +46,8 @@ def get_dataset(rid, duration, batch_size, validation=False):
     return dataset, dataloader
 
 def move_to_device(batch, dev):
+    if isinstance(batch, list):
+        return batch
     if isinstance(batch, dict):
         return {k : move_to_device(batch[k], dev) for k in batch}
     return batch.to(dev)
@@ -68,7 +70,8 @@ def evaluate(model, dataloader, e, i, device):
     for batch in dl:
         model.reset_cache()
         loss = model(move_to_device(batch, device))
-        total_loss += loss.item()
+        loss_val = sum([loss[k] for k in loss])
+        total_loss += loss_val.item()
         num_batches += 1
         del_batch(batch)
     avg_loss = total_loss / num_batches if num_batches > 0 else 0
@@ -122,22 +125,18 @@ def train(model, dataset, dataloader, duration, device, model_dir, learning_rate
         logging.info(f"Epoch {e} started.")
         for i, batch in enumerate(dl):
             loss = model(move_to_device(batch, device))
-            grad, lr = trainer.step(loss, model.parameters())
+            loss_val = sum([loss[k] for k in loss])
+            grad, lr = trainer.step(loss_val, model.parameters())
             step += 1
 
-            writer.add_scalar("loss", loss.item(), step)
+            for k in loss:
+                writer.add_scalar(f"loss_{k}", loss[k].item(), step) 
             writer.add_scalar("grad", grad, step)
             writer.add_scalar("lr", lr, step)
             n_element += 1
-            mean_loss += loss.item()
+            mean_loss += loss_val.item()
             del_batch(batch)
             
-
-            # Uncomment the lines below to perform periodic evaluation:
-            # if i % 3000 == 0 and i > 0:
-            #     eval_loss = evaluate(model, val_dataloader, e, i, device)
-            #     min_loss = save_model(model, writer, eval_loss, mean_loss / n_element,
-            #                           model_dir, step, e, i, min_loss)
 
         logging.info(f"Epoch {e} finished. Saving model...")
         model.save_weights(os.path.join(model_dir, f"latest_{e}_end"))
@@ -156,9 +155,11 @@ def main(args):
     os.makedirs(model_dir, exist_ok=True)
 
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
-
+ 
     model = Model(device=torch.device(device), 
-                mask_type=mask_type, model_configs=MODEL_FACTORY, model_names=["AudioLM", "MIDILM"])
+                n_prompts=args.n_prompts,
+                mask_type=mask_type, model_configs=MODEL_FACTORY, 
+                model_pairs=MODEL_PAIRS[args.model_type])
     dataset, dataloader = get_dataset(duration=args.duration, rid=0, batch_size=args.batch_size)
     train(model, dataset, dataloader, args.duration, device, model_dir,
           learning_rate=args.learning_rate,
@@ -174,6 +175,9 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--duration', type=float, required=True)
     parser.add_argument('-p', '--exp_name', type=str, required=True)
     parser.add_argument('-m', '--mask_type', type=str, required=True)
+    parser.add_argument('-n', '--n_prompts', type=int, required=True)
+    parser.add_argument('-b', '--model_type', type=str, required=True)
+
 
     args = parser.parse_args()
 

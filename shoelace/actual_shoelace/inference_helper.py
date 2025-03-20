@@ -87,7 +87,7 @@ class InferenceHelper:
 
 
     @torch.no_grad()
-    def audio_to_midi(self, input_ids_generator, chunk_frame, hop_frame, top_k, tasks):
+    def audio_2_midi(self, input_ids_generator, chunk_frame, hop_frame, top_k, tasks):
         midi_prompt = None
         n_id = 0
         chunk_len = chunk_frame // SEG_RES
@@ -97,12 +97,12 @@ class InferenceHelper:
             if audio_index is None:
                 break
             self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
-                            max_len=1, input_ids=input_ids, tasks=tasks[0],
+                            max_len=1, input_ids=input_ids, tasks=[tasks[0]],
                             use_generator=False, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
 
 
-            midi_codes = self.model.inference(model_name="MIDILM", tasks=tasks[1],
+            midi_codes = self.model.inference(model_name="MIDILM", tasks=[tasks[1]],
                             cond_model_name="AudioLM", max_len=chunk_len - 2,
                             use_generator=True, top_k=top_k, reset_cache=False,
                             last_chunk=False, input_ids=midi_prompt, 
