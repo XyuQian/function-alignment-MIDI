@@ -12,7 +12,7 @@ from shoelace.midi_lm.models.config import SEG_RES, PAD
 from shoelace.datasets.preprocess_midi import load_midi
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.datasets.utils import decode
-from shoelace.actual_shoelace.midi_2_audio.inference_helper import InferenceHelper
+from shoelace.actual_shoelace.bi_direct_5_tasks.inference_helper import InferenceHelper
 
 device = "cuda"
 SEQ_LEN = 512
