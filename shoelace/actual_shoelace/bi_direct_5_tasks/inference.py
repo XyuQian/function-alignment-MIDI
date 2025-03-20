@@ -80,13 +80,13 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
 
 
 
-def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks):
+def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks, n_prompts):
     """Runs inference using a trained MIDI language model."""
     model_folder = os.path.join(model_folder, "midi_2_audio")
     os.makedirs(model_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
-    model = InferenceHelper(model_folder=model_folder, device=device)
+    model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, device=device)
     midi_data_generator = get_midi_data(input_path, task=tasks[0], 
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
@@ -98,13 +98,13 @@ def run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks):
     save_rvq([os.path.join(output_folder, fname)], generated_codes)
 
 
-def run_inference_audio_2_midi(model_folder, output_folder, input_path, tasks):
+def run_inference_audio_2_midi(model_folder, output_folder, input_path, tasks, n_prompts):
     """Runs inference using a trained MIDI language model."""
     model_folder = os.path.join(model_folder, "audio_2_midi")
     os.makedirs(model_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*5.12)
-    model = InferenceHelper(model_folder=model_folder, device=device)
+    model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, device=device)
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
                                 hop_frame=hop_frame, device=device, task=tasks[0])
@@ -123,6 +123,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--task', type=str, required=True)
     parser.add_argument('-m', '--midi_mode', type=str, required=True)
     parser.add_argument('-a', '--audio_mode', type=str, required=True)
+    parser.add_argument('-n', '--n_prompts', type=str, required=True)
     
     args = parser.parse_args()
     model_id = args.model_id
@@ -130,11 +131,12 @@ if __name__ == "__main__":
     task = args.task
     midi_mode = args.midi_mode
     audio_mode = args.audio_mode
+    n_prompts = args.n_prompts
 
     model_folder = f"exp/bi_direct_medium_bi_mask_5_tasks/latest_{model_id}_end"
     if task == "a2m":
         tasks = [audio_mode, midi_mode]
-        run_inference_audio_2_midi(model_folder, output_folder, input_path, tasks)
+        run_inference_audio_2_midi(model_folder, output_folder, input_path, tasks, n_prompts)
     elif task == "m2a":
         tasks = [midi_mode, audio_mode]
-        run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks)
+        run_inference_midi_2_audio(model_folder, output_folder, input_path, tasks, n_prompts)
