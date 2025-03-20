@@ -67,7 +67,8 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 
 
 class Shoelace(nn.Module):
-    def __init__(self, device : torch.device, mask_type: str, model_configs: dict, 
+    def __init__(self, device : torch.device, mask_type: str, 
+            n_prompts: int, model_configs: dict, 
             model_pairs: dict):
         """
         Initialize the Shoelace model with given configurations.
@@ -104,7 +105,7 @@ class Shoelace(nn.Module):
                     num_heads=config["num_heads"],
                     n_out_indices=config["n_indices"],
                     n_in_indices=config["n_indices"],
-                    n_prompts=config["n_prompts"],
+                    n_prompts=n_prompts,
                     tasks=config["tasks"]
                 )
                 adapters.append(adapter)
@@ -118,6 +119,7 @@ class Shoelace(nn.Module):
         self.models = models
         self.adapters = adapters
         self.mask_type = mask_type
+        self.n_prompts = n_prompts
 
         print_params(self)
 
@@ -148,6 +150,7 @@ class Shoelace(nn.Module):
         max_n_layers = max(config["n_layers"] for _, config in model_dict.items())
         hiddens = {}
         masks = {}
+
         # Iterate through layers and perform cross-attention when appropriate.
         for i in range(max_n_layers):
             
@@ -160,14 +163,14 @@ class Shoelace(nn.Module):
                 cond_model_name = config["cond_model_name"]
                 hidden_a = hiddens[model_name]
                 hidden_b = hiddens[cond_model_name]
-                n_prompts = config["n_prompts"]
+                
                 
 
                 if i == 0:
                     cond_model_name = config["cond_model_name"]
                     main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
                         hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
-                    masks[model_name] = create_mask(main_seq_len, cond_seq_len, n_prompts, self.mask_type, device)
+                    masks[model_name] = create_mask(main_seq_len, cond_seq_len, self.n_prompts, self.mask_type, device)
                     
                 
                 if i % config["layer_skip"] == 0 and config["adapter"]:
@@ -189,7 +192,7 @@ class Shoelace(nn.Module):
     @torch.no_grad()
     def inference(self, model_name:str, max_len:int, reset_cache : bool, 
                     use_generator: bool, cond_model_name: str =None, 
-                    cond_indices: torch.Tensor=None,  **kwargs) -> dict:
+                    cond_indices: torch.Tensor=None, tasks: list=None, **kwargs) -> dict:
         
         model_dict = self.model_dict
         model_info = model_dict[model_name]
@@ -207,7 +210,6 @@ class Shoelace(nn.Module):
         adapter = model_info["adapter"]
         cond_model_cache = cond_model.get_cache()
         layer_skip = model_info["layer_skip"]
-        n_prompts = model_info["n_prompts"]
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
         max_n_layers = max(model_dict[model_name]["n_layers"], model_dict[cond_model_name]["n_layers"])
         for i in range(2333333):
@@ -228,6 +230,7 @@ class Shoelace(nn.Module):
                                                 hidden_b=hidden_b,
                                                 indices_a=main_indices,
                                                 indices_b=cond_indices,
+                                                tasks=tasks,
                                                 attn_mask=None)
                     hidden_a[0]["attn_output"] = adapt_output
             

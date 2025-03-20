@@ -157,6 +157,7 @@ def main(args):
     logging.info(f"Experiment {experiment_name} started in {experiment_folder}")
 
     model = Model(device=torch.device(device), 
+                n_prompts=args.n_prompts,
                 mask_type=mask_type, model_configs=MODEL_FACTORY, 
                 model_pairs=MODEL_PAIR)
     dataset, dataloader = get_dataset(duration=args.duration, rid=0, batch_size=args.batch_size)
@@ -174,6 +175,8 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--duration', type=float, required=True)
     parser.add_argument('-p', '--exp_name', type=str, required=True)
     parser.add_argument('-m', '--mask_type', type=str, required=True)
+    parser.add_argument('-n', '--n_prompts', type=int, required=True)
+
 
     args = parser.parse_args()
 
