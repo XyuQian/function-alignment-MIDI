@@ -176,7 +176,7 @@ if __name__ == "__main__":
     parser.add_argument('-p', '--exp_name', type=str, required=True)
     parser.add_argument('-m', '--mask_type', type=str, required=True)
     parser.add_argument('-n', '--n_prompts', type=int, required=True)
-    parser.add_argument('-b', '--model_type', type=str, required=True)
+    parser.add_argument('-t', '--model_type', type=str, required=True)
 
 
     args = parser.parse_args()
