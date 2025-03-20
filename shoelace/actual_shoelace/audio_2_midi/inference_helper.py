@@ -40,7 +40,7 @@ class InferenceHelper:
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
         from shoelace.actual_shoelace.audio_2_midi.config import MODEL_FACTORY
         self.model = Model(mask_type=None, device=torch.device("cuda"), model_configs=MODEL_FACTORY, 
-                model_names=["MIDILM", "AudioLM"])
+                model_names=["AudioLM", "MIDILM"], bi_direction=True)
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
 
@@ -55,14 +55,15 @@ class InferenceHelper:
         for input_ids, audio_index in input_ids_generator:
             if audio_index is None:
                 break
-            self.model.inference(model_name="AudioLM", max_len=1, input_ids=input_ids,
+            self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
+                            max_len=1, input_ids=input_ids,
                             use_generator=False, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
 
 
             midi_codes = self.model.inference(model_name="MIDILM", 
                             cond_model_name="AudioLM", max_len=chunk_len - 2,
-                            use_generator=True, top_k=top_k, reset_cache=True,
+                            use_generator=True, top_k=top_k, reset_cache=False,
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)

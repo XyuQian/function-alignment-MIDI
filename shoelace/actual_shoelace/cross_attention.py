@@ -81,16 +81,16 @@ class LowRankMultiheadAttention(nn.Module):
         vanilla_attn_output = hidden_a["attn_output"]
 
         q = hidden_a["q"]
-
-        kv_x = hidden_b["query"]
-
-        q_len, kv_len = q.shape[2], kv_x.shape[1]
         
-        prompt = self.prompt.repeat(len(kv_x), 1, 1)
-
-        key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
-        
-        kv_x = torch.concat([prompt, kv_x], 1)
+        if hidden_b is None:
+            kv_x = self.prompt.repeat(len(q), 1, 1)
+            key_pos = torch.zeros([len(kv_x), kv_x.shape[1], self.embed_dim]).to(kv_x.device)
+            
+        else:
+            kv_x = hidden_b["query"]
+            prompt = self.prompt.repeat(len(kv_x), 1, 1)
+            key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
+            kv_x = torch.concat([prompt, kv_x], 1)
         
         key = self.k_linear(kv_x)  + self.k_pos_linear(key_pos)
         value = self.v_linear(kv_x)
@@ -98,6 +98,8 @@ class LowRankMultiheadAttention(nn.Module):
         q_pos = self.q_pos_linear(pe[indices_a])
         q = q + rearrange(q_pos, "b t (h d) -> b h t d", h=self.num_heads)
         attn_output = self.compute_attention(q, key, value, attn_mask)
+
+        
 
         return attn_output * self.gates + vanilla_attn_output
 

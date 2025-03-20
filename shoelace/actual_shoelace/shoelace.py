@@ -9,12 +9,7 @@ from shoelace.utils.network_utils import freeze, print_params
 from .cross_attention import SholaceParam
 
 
-def reformat(state):
-    res = {}
-    for key in state:
-        k = str.replace(key, "0.0", "adapters.0")
-        res[k] = state[key]
-    return res
+
 
 
 def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: torch.device, 
@@ -49,17 +44,20 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
             random_mask = torch.rand_like(base_mask)
             base_mask[random_mask < mask_ratio] = float('-inf')
             random_mask = torch.rand_like(another_mask)
-            another_mask[another_mask < mask_ratio] = float('-inf')
+            another_mask[random_mask < mask_ratio] = float('-inf')
+            
 
         if r == 1:
             random_mask = torch.rand_like(base_mask)
             base_mask[random_mask < mask_ratio] = float('-inf')
             another_mask = another_mask + float('-inf')
+            
         
         if r == 2:
             random_mask = torch.rand_like(another_mask)
-            another_mask[another_mask < mask_ratio] = float('-inf')
+            another_mask[random_mask < mask_ratio] = float('-inf')
             base_mask = base_mask + float('-inf')
+            
 
 
     # Pad the masks to account for "no mask" or "CLS" positions.
@@ -223,11 +221,8 @@ class Shoelace(nn.Module):
             if i == 0:
                 main_seq_len, cond_seq_len, device = main_hidden[0]["query"].shape[1], \
                     cond_hidden[0]["query"].shape[1], main_hidden[0]["query"].device
-                
-            mask_a, mask_b = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
+                mask_a, mask_b = create_mask(main_seq_len, cond_seq_len, n_prompts[0], self.mask_type, device)
             if i % layer_skips[main_model_name] == 0 and main_adapter:
-                
-                
                 adapt_output_a = main_adapter(layer_idx=i // layer_skips[main_model_name],
                                                 hidden_a=main_hidden[0], 
                                                 hidden_b=cond_hidden[0], 
@@ -264,16 +259,18 @@ class Shoelace(nn.Module):
         model_dict = self.model_dict
         model_info = model_dict[model_name]
         model = model_info["model"]
-        if reset_cache:
-            model.reset_cache()
+        model.reset_cache()
         
         model.set_use_generator(use_generator)
         model_gen = model.inference(max_len=max_len, **kwargs)
         if not use_generator:
             return model_gen
-            
+        
+        cond_model = model_dict[cond_model_name]["model"]
+        if reset_cache:
+            cond_model.reset_cache()
         adapter = model_info["adapter"]
-        cond_model_cache = model_dict[cond_model_name]["model"].get_cache()
+        cond_model_cache = cond_model.get_cache()
         layer_skip = model_info["layer_skip"]
         n_prompts = model_info["n_prompts"]
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
@@ -289,7 +286,6 @@ class Shoelace(nn.Module):
                     hidden_a = next(model_gen)
                 if j % cond_layer_skip == 0:
                     hidden_b = cond_model_cache[j // cond_layer_skip]
-
                 if j % layer_skip == 0:
                     adapt_output = adapter(
                         layer_idx=j // layer_skip,

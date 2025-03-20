@@ -78,6 +78,8 @@ class BasicMultiheadAttention(nn.Module):
         self.kv_cache = None
 
     def get_cache(self):
+        if self.kv_cache is None:
+            return None
         return {
             "k": self.kv_cache["past_k"],
             "v": self.kv_cache["past_v"],
