@@ -123,7 +123,7 @@ if __name__ == "__main__":
     parser.add_argument('-t', '--task', type=str, required=True)
     parser.add_argument('-m', '--midi_mode', type=str, required=True)
     parser.add_argument('-a', '--audio_mode', type=str, required=True)
-    parser.add_argument('-n', '--n_prompts', type=str, required=True)
+    parser.add_argument('-n', '--n_prompts', type=int, required=True)
     
     args = parser.parse_args()
     model_id = args.model_id
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     task = args.task
     midi_mode = args.midi_mode
     audio_mode = args.audio_mode
-    n_prompts = args.n_prompts
+    n_prompts = int(args.n_prompts)
 
     model_folder = f"exp/bi_direct_medium_bi_mask_5_tasks/latest_{model_id}_end"
     if task == "a2m":
