@@ -27,9 +27,10 @@ def get_midi_data(path, chunk_frame, hop_frame, device, task):
                 "chords": {"melody_only": False, "acc_only": False, "extract_melody": False},
                 "beats": {"melody_only": False, "acc_only": False, "extract_melody": False}
     }
-    results = load_midi(path,  melody_only=midi_configs["melody_only"],
-                    acc_only=midi_configs["acc_only"],
-                    extract_melody=midi_configs["extract_melody"],
+    config = midi_configs[task]
+    results = load_midi(path,  melody_only=config["melody_only"],
+                    acc_only=config["acc_only"],
+                    extract_melody=config["extract_melody"],
                     return_onset=True,
                     remove_sil=False)
                     
