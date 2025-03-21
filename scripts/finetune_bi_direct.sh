@@ -2,12 +2,12 @@ lr=1e-4
 exp=exp
 batch_size=4
 e=15
-n_prompts=50
-task_type=mono
-model_type=bi_di
+n_prompts=10
+task_type=$2
+model_type=$1
 exp_dir=music_jam_${model_type}_${n_prompts}_${task_type}
 
-CUDA_VISIBLE_DEVICES=0 python -m shoelace.actual_shoelace.train_single_gpu \
+python -m shoelace.actual_shoelace.train_single_gpu \
       --learning_rate=$lr \
       --experiment_folder=$exp \
       --batch_size=$batch_size \
