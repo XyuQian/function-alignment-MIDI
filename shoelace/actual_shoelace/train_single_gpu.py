@@ -104,7 +104,7 @@ def train(model, dataset, dataloader, duration, device, model_dir, learning_rate
     step = 0
 
     # Load validation dataset
-    _, val_dataloader = get_dataset(rid=0, duration=duration, batch_size=16, validation=True)
+    _, val_dataloader = get_dataset(rid=0, duration=duration, batch_size=8, validation=True)
     logging.info(f"Training started for {epochs} epochs.")
 
     min_loss = float('inf')

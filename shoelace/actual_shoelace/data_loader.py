@@ -235,6 +235,8 @@ def collate_fn(batch):
     midi_seq = [
         F.pad(x, (0, 0, 0, max_len - len(x)), "constant", PAD) for x in midi_arrays
     ]
+    if max_len > 256:
+        midi_seq = [x[:256] for x in midi_seq]
     midi_data = torch.stack(midi_seq, 0).long()
     
     midi_index = transform_inputs(midi_data[..., 0], SEG_RES).long()
