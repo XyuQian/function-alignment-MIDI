@@ -14,6 +14,10 @@ TASKS = {
     "full":{
         "audio": ["full"],
         "midi": ["full"]
+    },
+    "mel-acc":{
+        "audio": ["full", "accompaniment", "vocals"],
+        "midi": ["full", "accompaniment", "melody"]
     }
                 
 }
