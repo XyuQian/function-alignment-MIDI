@@ -26,7 +26,7 @@ MODEL_FACTORY = {
         "num_heads": 24,
         "steps": 16,
         "checkpoint_path": None,
-         "condition_model": "MIDILM"
+        "condition_model_name": "MIDILM"
         
     },
     "MIDILM": {
