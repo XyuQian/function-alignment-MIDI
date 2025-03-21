@@ -105,10 +105,10 @@ class Shoelace(nn.Module):
             config["model_obj"] = model_instance
         
             
-            condition_model_name = config["condition_model_name"]
+            cond_model_name = config["cond_model_name"]
             adapter = SholaceParam(
                 n_layers=config["n_layers"],
-                in_dim=model_configs[condition_model_name]["emb_dim"],
+                in_dim=model_configs[cond_model_name]["emb_dim"],
                 low_rank_dim=config["low_rank_dim"],
                 out_dim=config["emb_dim"],
                 num_heads=config["num_heads"],
