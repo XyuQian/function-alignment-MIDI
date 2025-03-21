@@ -6,6 +6,7 @@ import numpy as np
 from shoelace.actual_shoelace.config import IDX_PAD
 # Assuming these are imported from your own library or files
 from shoelace.utils.network_utils import freeze, print_params
+from shoelace.actual_shoelace.task_config import TASKS, MODEL_MAPPING
 from .cross_attention import SholaceParam
 
 
@@ -40,16 +41,20 @@ def create_mask(batch_size: int,
     base_mask = torch.zeros_like(padding).float()
     base_mask[padding] = float('-inf')
 
-    r = np.random.rand()
-    if b_len > 100 and a_len > 100:
-        print(a_len, b_len)
-    if r < .5:
-        random_mask = torch.rand_like(base_mask).to(base_mask.device)
-        # Set positions to -inf based on the mask ratio to block attention.
-        base_mask[random_mask < mask_ratio] = float('-inf')
+    # r = np.random.rand()
+    # if b_len > 100 and a_len > 100:
+    #     print(a_len, b_len)
+    # if r < .5:
+    #     random_mask = torch.rand_like(base_mask).to(base_mask.device)
+    #     # Set positions to -inf based on the mask ratio to block attention.
+    #     base_mask[random_mask < mask_ratio] = float('-inf')
         
-    else:
-        base_mask = base_mask + float('-inf')
+    # else:
+    #     base_mask = base_mask + float('-inf')
+
+
+    random_mask = torch.rand_like(base_mask).to(base_mask.device)
+    base_mask[random_mask < mask_ratio] = float('-inf')
     
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     
@@ -79,8 +84,8 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 
 
 class Shoelace(nn.Module):
-    def __init__(self, device : torch.device, mask_type: str, 
-            n_prompts: int, model_configs: dict, 
+    def __init__(self, device : torch.device, 
+            n_prompts: int, model_configs: dict, task_type: str, 
             model_pairs: dict):
         """
         Initialize the Shoelace model with given configurations.
@@ -112,20 +117,21 @@ class Shoelace(nn.Module):
                 config["adapter"] = None
                 config["cond_model_name"] = None
             else:
+                condition_model_name = model_pairs[key]["condition_model"]
                 adapter = SholaceParam(
                     n_layers=config["n_layers"],
-                    in_dim=model_configs[model_pairs[key]["condition_model"]]["emb_dim"],
+                    in_dim=model_configs[condition_model_name]["emb_dim"],
                     low_rank_dim=config["low_rank_dim"],
                     out_dim=config["emb_dim"],
                     num_heads=config["num_heads"],
                     n_out_indices=config["n_indices"],
                     n_in_indices=config["n_indices"],
                     n_prompts=n_prompts,
-                    tasks=config["tasks"]
+                    tasks=TASKS[task_type][MODEL_MAPPING[key]]
                 )
                 adapters.append(adapter)
                 config["adapter"] = adapter
-                config["cond_model_name"] = model_pairs[key]["condition_model"]
+                config["cond_model_name"] = condition_model_name
 
 
         # Parse and store models' dictionaries.
@@ -133,7 +139,6 @@ class Shoelace(nn.Module):
         self.model_dict = model_configs
         self.models = models
         self.adapters = adapters
-        self.mask_type = mask_type
         self.n_prompts = n_prompts
 
         print_params(self)
@@ -186,7 +191,6 @@ class Shoelace(nn.Module):
                     cond_model_name = config["cond_model_name"]
                     indices_a=args[model_name]["indices"]
                     indices_b=args[cond_model_name]["indices"]
-                    padding = indices_a == IDX_PAD
 
                     masks[model_name] = create_mask(
                         batch_size=len(hidden_a[0]["q"]),

@@ -8,12 +8,12 @@ import torch.nn.functional as F
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.midi_lm.models.config import SEG_RES, PAD
 from shoelace.actual_shoelace.config import IDX_PAD
+from shoelace.actual_shoelace.task_config import TASKS
 from shoelace.utils.network_utils import transform_inputs
 
 TOL_WIN = 0
 
 TAIL_STEP = 64
-
 
 
 def load_data_lst(path_folder: str, validation: bool):
@@ -28,8 +28,8 @@ def load_data_lst(path_folder: str, validation: bool):
             files: A list of lists, each sub-list containing .lst entries for a subset.
             feature_paths: A list of .h5 file paths (one per .lst file).
     """
-    text_dir = os.path.join(path_folder, "pop909", "text")
-    feature_dir = os.path.join(path_folder, "pop909", "feature_5_tasks")
+    text_dir = os.path.join(path_folder, "text")
+    feature_dir = os.path.join(path_folder, "feature_5_tasks")
 
     text_dir = text_dir + "_eval" if validation else text_dir
 
@@ -64,11 +64,12 @@ class ShoelaceDataset(Dataset):
                  duration: float,
                  path_folder: str,
                  rid: int,
+                 task_type: str,
                  num_workers: int = 1,
+                 
                  use_loader: bool = True,
                  validation: bool = False,
-                 vocals_only: bool = False,
-                 tasks: dict = None):
+                 vocals_only: bool = False, ):
         """
         Args:
             path_folder (str): Root folder containing 'pop909' data (text & feature).
@@ -80,12 +81,8 @@ class ShoelaceDataset(Dataset):
         self.rid = rid
         self.use_loader = use_loader
         
-
-        if tasks is None:
-            tasks = {
-                "midi": ["full", "melody", "accompaniment", "beats", "chords"],
-                "audio": ["full", "vocals", "accompaniment", "beats", "chords"]
-            }
+        tasks = TASKS[task_type]
+        
         
         max_frame = int(FRAME_RATE * duration)
 

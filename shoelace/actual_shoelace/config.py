@@ -6,6 +6,8 @@ from shoelace.midi_lm.finetune.midi_lm import MIDILMLora
 device = "cuda" if torch.cuda.is_available() else "cpu"
 IDX_PAD = 9999
 
+
+
 MODEL_FACTORY = {
     "AudioLM": {
         "model": MusicGenLora,
@@ -24,7 +26,7 @@ MODEL_FACTORY = {
         "num_heads": 24,
         "steps": 16,
         "checkpoint_path": None,
-        "tasks": ["vocals", "accompaniment", "beats", "chords", "full"]
+        
     },
     "MIDILM": {
         "model": MIDILMLora,
@@ -43,7 +45,7 @@ MODEL_FACTORY = {
         "steps": 1,
         "seq_len": 0,
         "checkpoint_path": None,
-        "tasks": ["melody", "accompaniment", "beats", "chords", "full"]
+        
     },
 }
 

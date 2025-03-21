@@ -21,13 +21,14 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def get_dataset(rid, duration, batch_size, validation=False):
+def get_dataset(rid, duration, batch_size, task_type, validation=False):
     num_workers = 0
     dataset = Dataset(
         duration=duration,
         validation=validation,
-        path_folder="data/formatted",
+        path_folder="data/formatted/pop909",
         rid=rid,
+        task_type=task_type,
         num_workers=num_workers
     )
 
@@ -95,7 +96,7 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
     return min_loss
 
 
-def train(model, dataset, dataloader, duration, device, model_dir, learning_rate, epochs):
+def train(model, dataset, dataloader, val_dataloader, device, model_dir, learning_rate, epochs):
     num_steps = len(dataloader)
     rng = np.random.RandomState(456)
     writer = SummaryWriter(model_dir, flush_secs=20)
@@ -104,7 +105,7 @@ def train(model, dataset, dataloader, duration, device, model_dir, learning_rate
     step = 0
 
     # Load validation dataset
-    _, val_dataloader = get_dataset(rid=0, duration=duration, batch_size=8, validation=True)
+    
     logging.info(f"Training started for {epochs} epochs.")
 
     min_loss = float('inf')
@@ -148,7 +149,7 @@ def train(model, dataset, dataloader, duration, device, model_dir, learning_rate
 def main(args):
     experiment_folder = args.experiment_folder
     experiment_name = args.exp_name
-    mask_type= args.mask_type
+   
 
     os.makedirs(experiment_folder, exist_ok=True)
     model_dir = os.path.join(experiment_folder, experiment_name)
@@ -158,10 +159,15 @@ def main(args):
  
     model = Model(device=torch.device(device), 
                 n_prompts=args.n_prompts,
-                mask_type=mask_type, model_configs=MODEL_FACTORY, 
+                model_configs=MODEL_FACTORY, 
+                task_type=args.task_type,
                 model_pairs=MODEL_PAIRS[args.model_type])
-    dataset, dataloader = get_dataset(duration=args.duration, rid=0, batch_size=args.batch_size)
-    train(model, dataset, dataloader, args.duration, device, model_dir,
+    dataset, dataloader = get_dataset(duration=args.duration, rid=0, 
+                batch_size=args.batch_size, task_type=args.task_type)
+
+    _, val_dataloader = get_dataset(rid=0, duration=args.duration, batch_size=8, 
+        validation=True, task_type=args.task_type)
+    train(model, dataset, dataloader, val_dataloader, device, model_dir,
           learning_rate=args.learning_rate,
           epochs=args.epoch)
 
@@ -174,7 +180,7 @@ if __name__ == "__main__":
     parser.add_argument('-lr', '--learning_rate', type=float, required=True)
     parser.add_argument('-s', '--duration', type=float, required=True)
     parser.add_argument('-p', '--exp_name', type=str, required=True)
-    parser.add_argument('-m', '--mask_type', type=str, required=True)
+    parser.add_argument('-tt', '--task_type', type=str, required=True)
     parser.add_argument('-n', '--n_prompts', type=int, required=True)
     parser.add_argument('-t', '--model_type', type=str, required=True)
 
