@@ -87,10 +87,12 @@ class LowRankMultiheadAttention(nn.Module):
         q = hidden_a["q"]
         
         if hidden_b is None:
+            print("hidden_b", None)
             kv_x = prompt
             key_pos = torch.zeros([len(kv_x), kv_x.shape[1], self.embed_dim]).to(kv_x.device)
             
         else:
+            print("hidden_b", hidden_b["query"].shape)
             kv_x = hidden_b["query"]
             key_pos = F.pad(pe[indices_b], (0, 0, prompt.shape[1], 0), "constant", 0)
             kv_x = torch.concat([prompt, kv_x], 1)

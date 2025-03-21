@@ -56,8 +56,8 @@ class InferenceHelper:
 
             if midi_index is None:
                 break
-            print(input_ids)
-            print(midi_index)
+            # print(input_ids)
+            # print(mii_index)
             self.model.inference(model_name="MIDILM", 
                             max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
                             cond_model_name="AudioLM", 
@@ -111,8 +111,8 @@ class InferenceHelper:
                             batch_size=len(input_ids), device=input_ids.device)
 
             prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_len, chunk_len - 2)
-            print("prefix", prefix)
-            print("midi_prompt", midi_prompt)
+            # print("prefix", prefix)
+            # print("midi_prompt", midi_prompt)
             results.append(prefix.unsqueeze(0))
             midi_prompt = midi_prompt.unsqueeze(0)
             
