@@ -64,13 +64,13 @@ class InferenceHelper:
                             use_generator=self.model_type=="bi_di", top_k=16, 
                             last_chunk=True, input_ids=input_ids, 
                             tasks=[tasks[0]],
-                            reset_cache=True)
+                            reset_cache=False)
 
 
             audio_codes = self.model.inference(model_name="AudioLM", 
                             cond_model_name="MIDILM", 
                             max_len=chunk_frame - hop_frame + 4 if n_id > 0 else chunk_frame + 4,
-                            use_generator=True, top_k=top_k, reset_cache=False,
+                            use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=audio_prompt, cond_indices=midi_index,
                             batch_size=len(input_ids), 
                             tasks=[tasks[1]], device=input_ids.device)
@@ -99,13 +99,13 @@ class InferenceHelper:
                 break
             self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
                             max_len=1, input_ids=input_ids, tasks=[tasks[0]],
-                            use_generator=self.model_type=="bi_di", top_k=top_k, reset_cache=True,
+                            use_generator=self.model_type=="bi_di", top_k=top_k, reset_cache=False,
                             last_chunk=True, device=input_ids.device)
 
 
             midi_codes = self.model.inference(model_name="MIDILM", tasks=[tasks[1]],
                             cond_model_name="AudioLM", max_len=chunk_len - 2,
-                            use_generator=True, top_k=top_k, reset_cache=False,
+                            use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
