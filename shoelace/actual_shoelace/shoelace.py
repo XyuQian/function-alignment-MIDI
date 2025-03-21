@@ -34,19 +34,15 @@ def create_mask(batch_size: int,
             - mask_a: A cross-attention mask from A to B.
             - mask_b: A cross-attention mask from B to A.
     """
-
-    
-
     if len(padding_a) == 1:
         padding_a = padding_a.repeat(batch_size, 1)
     if len(padding_b) == 1:
         padding_b = padding_b.repeat(batch_size, 1)
     padding = padding_a.unsqueeze(-1) | padding_b.unsqueeze(1)
     base_mask = torch.zeros_like(padding).float()
-    if mask_type:
+    if not mask_type:
         base_mask = base_mask + float('-inf')
     else:
-
         base_mask[padding] = float('-inf')
         random_mask = torch.rand_like(base_mask).to(base_mask.device)
         base_mask[random_mask < mask_ratio] = float('-inf')
