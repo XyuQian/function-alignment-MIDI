@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import os
 import numpy as np
-
+from shoelace.actual_shoelace.config import IDX_PAD
 # Assuming these are imported from your own library or files
 from shoelace.utils.network_utils import freeze, print_params
 from .cross_attention import SholaceParam
@@ -12,7 +12,11 @@ from .cross_attention import SholaceParam
 
 
 
-def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: torch.device, 
+def create_mask(batch_size: int, 
+            padding_a: torch.tensor, 
+            padding_b: torch.tensor, 
+            a_len: int, b_len: int,
+            n_prompts: int,
             mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
     """
     Create causal-like masks for cross attention between two sequences.
@@ -28,19 +32,26 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
             - mask_a: A cross-attention mask from A to B.
             - mask_b: A cross-attention mask from B to A.
     """
-    base_mask = torch.zeros(a_len, b_len)
+    if len(padding_a) == 1:
+        padding_a = padding_a.repeat(batch_size, 1)
+    if len(padding_b) == 1:
+        padding_b = padding_b.repeat(batch_size, 1)
+    padding = padding_a.unsqueeze(-1) | padding_b.unsqueeze(1)
+    base_mask = torch.zeros_like(padding).float()
+    base_mask[padding] = float('-inf')
+
     r = np.random.rand()
     if b_len > 100 and a_len > 100:
         print(a_len, b_len)
     if r < .5:
-        random_mask = torch.rand_like(base_mask)
+        random_mask = torch.rand_like(base_mask).to(base_mask.device)
         # Set positions to -inf based on the mask ratio to block attention.
         base_mask[random_mask < mask_ratio] = float('-inf')
         
     else:
         base_mask = base_mask + float('-inf')
-
-    base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0).to(device)
+    
+    base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     
     return base_mask
 
@@ -167,22 +178,29 @@ class Shoelace(nn.Module):
                 cond_model_name = config["cond_model_name"]
                 if cond_model_name is None:
                     continue
-                hidden_a = hiddens[model_name]
-                hidden_b = hiddens[cond_model_name]
-                
-                cond_model_name = config["cond_model_name"]
-                main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
-                    hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
-                masks[model_name] = create_mask(main_seq_len, cond_seq_len, 
-                    self.n_prompts, self.mask_type, device)
-                
                 
                 if i % config["layer_skip"] == 0 and config["adapter"]:
+                    hidden_a = hiddens[model_name]
+                    hidden_b = hiddens[cond_model_name]
+                    
+                    cond_model_name = config["cond_model_name"]
+                    indices_a=args[model_name]["indices"]
+                    indices_b=args[cond_model_name]["indices"]
+                    padding = indices_a == IDX_PAD
+
+                    masks[model_name] = create_mask(
+                        batch_size=len(hidden_a[0]["q"]),
+                        padding_a=(indices_a == IDX_PAD), 
+                        padding_b=(indices_b == IDX_PAD),
+                        a_len=len(indices_a), 
+                        b_len=len(indices_b),
+                        n_prompts=self.n_prompts)
+
                     adapt_output = config["adapter"](layer_idx=i // config["layer_skip"],
                                                 hidden_a=hidden_a[0], 
                                                 hidden_b=hidden_b[0], 
-                                                indices_a=args[model_name]["indices"],
-                                                indices_b=args[cond_model_name]["indices"],
+                                                indices_a=indices_a,
+                                                indices_b=indices_b,
                                                 tasks=args[model_name]["tasks"],
                                                 attn_mask=masks[model_name])
                 # Assuming hidden_a is a list/dict structure where the first element holds the adapter output.

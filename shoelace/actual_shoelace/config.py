@@ -4,6 +4,7 @@ from shoelace.musicgen.finetune.musicgen import MusicGenLora
 from shoelace.midi_lm.finetune.midi_lm import MIDILMLora
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
+IDX_PAD = 9999
 
 MODEL_FACTORY = {
     "AudioLM": {

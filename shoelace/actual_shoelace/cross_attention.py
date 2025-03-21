@@ -113,7 +113,7 @@ class LowRankMultiheadAttention(nn.Module):
 
         attn_weights = torch.matmul(q, key.transpose(-2, -1)) / math.sqrt(self.head_dim)
         if attn_mask is not None:
-            attn_weights += attn_mask.unsqueeze(0).unsqueeze(0) if attn_mask.dim() == 2 else attn_mask
+            attn_weights += attn_mask.unsqueeze(0).unsqueeze(0) if attn_mask.dim() == 2 else attn_mask.unsqueeze(1)
         attn_weights = F.softmax(attn_weights, dim=-1)
         attn_weights = self.dropout(attn_weights)
         attn_output = torch.matmul(attn_weights, value).transpose(1, 2).contiguous().view(batch_size, -1, self.embed_dim)

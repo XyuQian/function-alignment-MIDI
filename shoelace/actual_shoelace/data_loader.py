@@ -7,6 +7,7 @@ from tqdm import tqdm
 import torch.nn.functional as F
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.midi_lm.models.config import SEG_RES, PAD
+from shoelace.actual_shoelace.config import IDX_PAD
 from shoelace.utils.network_utils import transform_inputs
 
 TOL_WIN = 0
@@ -46,7 +47,7 @@ def load_data_lst(path_folder: str, validation: bool):
 
         all_files.append(lines)
         all_feature_paths.append(path_h5)
-        
+        break
 
     return all_files, all_feature_paths
 
@@ -193,16 +194,15 @@ class ShoelaceDataset(Dataset):
         midi_st, midi_ed, midi_prefix_st, midi_prefix_ed = sample["midi"][midi_tag]
 
         events_len = len(self.cache_data[f"{fid}.midi.{midi_tag}.events"])
-        fake_ed = midi_st + TAIL_STEP if midi_ed + TAIL_STEP < events_len else events_len
-        midi_segment = self.cache_data[f"{fid}.midi.{midi_tag}.events"][midi_st : fake_ed]
+        midi_ed = midi_ed + 1 if midi_ed + 1 < events_len else events_len
+        midi_segment = self.cache_data[f"{fid}.midi.{midi_tag}.events"][midi_st : midi_ed]
 
         if midi_prefix_ed > midi_prefix_st:
             prefix = self.cache_data[f"{fid}.midi.{midi_tag}.res_events"][midi_prefix_st : midi_prefix_ed]
             midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
 
         midi_segment[midi_segment < 0] = PAD
-        actual_len = midi_ed - midi_st + (midi_prefix_ed - midi_prefix_st)
-        return audio_segment, midi_segment, actual_len, audio_tag, midi_tag
+        return audio_segment, midi_segment, audio_tag, midi_tag
 
     def reset_random_seed(self, seed_base: int, epoch: int):
         """
@@ -229,26 +229,26 @@ def collate_fn(batch):
     audio_data = torch.stack(arrays, dim=0).long()
 
 
-    arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
+    midi_arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
 
-    max_len = max([x[2] for x in batch])
-    min_len = min([len(x[1]) for x in batch] + [max_len])
+    max_len = max([len(x) for x in midi_arrays])
     midi_seq = [
-        x[1][:min_len]
-        for x in batch
+        F.pad(x, (0, 0, 0, max_len - len(x)), "constant", PAD) for x in midi_arrays
     ]
-    midi_data = torch.from_numpy(np.stack(midi_seq, axis=0)).long()
+    midi_data = torch.stack(midi_seq, 0).long()
     
     midi_index = transform_inputs(midi_data[..., 0], SEG_RES).long()
+    midi_index[midi_data[..., 0] == PAD] = IDX_PAD
     midi_index = F.pad(midi_index[:, :-1], (1, 0), "constant", 0)
+    
     x = torch.arange(len(audio_data[0]) + 3).long().unsqueeze(0)
     
     # audio_index = torch.stack([F.pad(x, (i + 1, 3 - i), "constant", 0) for i in range(4)], -1)
     audio_index = F.pad(x, (1, 0), "constant", 0)
     
-    audio_tasks = [b[3] for b in batch]
-    midi_tasks = [b[4] for b in batch]
-    print(midi_index[:, -1])
+    audio_tasks = [b[2] for b in batch]
+    midi_tasks = [b[3] for b in batch]
+    
 
     return {
         "AudioLM": {
