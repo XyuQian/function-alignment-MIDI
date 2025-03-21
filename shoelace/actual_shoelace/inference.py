@@ -127,6 +127,7 @@ if __name__ == "__main__":
     parser.add_argument('-m', '--midi_mode', type=str, required=True)
     parser.add_argument('-a', '--audio_mode', type=str, required=True)
     parser.add_argument('-n', '--n_prompts', type=int, required=True)
+    parser.add_argument('-mmt', '--model_task', type=str, required=True)
     
     args = parser.parse_args()
     model_id = args.model_id
@@ -135,9 +136,10 @@ if __name__ == "__main__":
     model_type = args.model_type
     midi_mode = args.midi_mode
     audio_mode = args.audio_mode
+    model_task = args.model_task
     n_prompts = int(args.n_prompts)
 
-    model_folder = f"exp/bi_direct_medium_n_prompts_{model_type}_{n_prompts}/latest_{model_id}_end"
+    model_folder = f"exp/music_jam_{model_type}_{n_prompts}_{model_task}/latest_{model_id}_end"
     if task_type == "audio_2_midi":
         tasks = [audio_mode, midi_mode]
         run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, n_prompts)
