@@ -47,7 +47,7 @@ def load_data_lst(path_folder: str, validation: bool):
 
         all_files.append(lines)
         all_feature_paths.append(path_h5)
-        break
+        
 
     return all_files, all_feature_paths
 
