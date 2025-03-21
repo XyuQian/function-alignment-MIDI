@@ -18,6 +18,7 @@ def create_mask(batch_size: int,
             padding_b: torch.tensor, 
             a_len: int, b_len: int,
             n_prompts: int,
+            mask_type: bool, 
             mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
     """
     Create causal-like masks for cross attention between two sequences.
@@ -33,28 +34,22 @@ def create_mask(batch_size: int,
             - mask_a: A cross-attention mask from A to B.
             - mask_b: A cross-attention mask from B to A.
     """
+
+    
+
     if len(padding_a) == 1:
         padding_a = padding_a.repeat(batch_size, 1)
     if len(padding_b) == 1:
         padding_b = padding_b.repeat(batch_size, 1)
     padding = padding_a.unsqueeze(-1) | padding_b.unsqueeze(1)
     base_mask = torch.zeros_like(padding).float()
-    base_mask[padding] = float('-inf')
+    if mask_type:
+        base_mask = base_mask + float('-inf')
+    else:
 
-    # r = np.random.rand()
-    # if b_len > 100 and a_len > 100:
-    #     print(a_len, b_len)
-    # if r < .5:
-    #     random_mask = torch.rand_like(base_mask).to(base_mask.device)
-    #     # Set positions to -inf based on the mask ratio to block attention.
-    #     base_mask[random_mask < mask_ratio] = float('-inf')
-        
-    # else:
-    #     base_mask = base_mask + float('-inf')
-
-
-    random_mask = torch.rand_like(base_mask).to(base_mask.device)
-    base_mask[random_mask < mask_ratio] = float('-inf')
+        base_mask[padding] = float('-inf')
+        random_mask = torch.rand_like(base_mask).to(base_mask.device)
+        base_mask[random_mask < mask_ratio] = float('-inf')
     
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     
@@ -86,7 +81,7 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 class Shoelace(nn.Module):
     def __init__(self, device : torch.device, 
             n_prompts: int, model_configs: dict, task_type: str, 
-            model_pairs: dict):
+            mask_type: dict):
         """
         Initialize the Shoelace model with given configurations.
 
@@ -108,30 +103,22 @@ class Shoelace(nn.Module):
                 model_instance.load_weights(config["checkpoint_path"])
             models.append(model_instance)
             config["model_obj"] = model_instance
+        
             
-            # Freeze all models except the primary one when not in bidirectional mode.
-            if model_pairs[key]["is_freeze"]:
-                freeze(model_instance)
-            
-            if model_pairs[key]["condition_model"] is None:
-                config["adapter"] = None
-                config["cond_model_name"] = None
-            else:
-                condition_model_name = model_pairs[key]["condition_model"]
-                adapter = SholaceParam(
-                    n_layers=config["n_layers"],
-                    in_dim=model_configs[condition_model_name]["emb_dim"],
-                    low_rank_dim=config["low_rank_dim"],
-                    out_dim=config["emb_dim"],
-                    num_heads=config["num_heads"],
-                    n_out_indices=config["n_indices"],
-                    n_in_indices=config["n_indices"],
-                    n_prompts=n_prompts,
-                    tasks=TASKS[task_type][MODEL_MAPPING[key]]
-                )
-                adapters.append(adapter)
-                config["adapter"] = adapter
-                config["cond_model_name"] = condition_model_name
+            condition_model_name = config["condition_model_name"]
+            adapter = SholaceParam(
+                n_layers=config["n_layers"],
+                in_dim=model_configs[condition_model_name]["emb_dim"],
+                low_rank_dim=config["low_rank_dim"],
+                out_dim=config["emb_dim"],
+                num_heads=config["num_heads"],
+                n_out_indices=config["n_indices"],
+                n_in_indices=config["n_indices"],
+                n_prompts=n_prompts,
+                tasks=TASKS[task_type][MODEL_MAPPING[key]]
+            )
+            adapters.append(adapter)
+            config["adapter"] = adapter
 
 
         # Parse and store models' dictionaries.
@@ -140,6 +127,7 @@ class Shoelace(nn.Module):
         self.models = models
         self.adapters = adapters
         self.n_prompts = n_prompts
+        self.mask_type = mask_type
 
         print_params(self)
 
@@ -181,14 +169,11 @@ class Shoelace(nn.Module):
 
             for model_name, config in model_dict.items():
                 cond_model_name = config["cond_model_name"]
-                if cond_model_name is None:
-                    continue
-                
-                if i % config["layer_skip"] == 0 and config["adapter"]:
+
+                if i % config["layer_skip"] == 0:
                     hidden_a = hiddens[model_name]
                     hidden_b = hiddens[cond_model_name]
                     
-                    cond_model_name = config["cond_model_name"]
                     indices_a=args[model_name]["indices"]
                     indices_b=args[cond_model_name]["indices"]
 
@@ -198,6 +183,7 @@ class Shoelace(nn.Module):
                         padding_b=(indices_b == IDX_PAD),
                         a_len=len(indices_a), 
                         b_len=len(indices_b),
+                        mask_type=self.mask_type[model_name],
                         n_prompts=self.n_prompts)
 
                     adapt_output = config["adapter"](layer_idx=i // config["layer_skip"],

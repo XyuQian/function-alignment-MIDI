@@ -26,6 +26,7 @@ MODEL_FACTORY = {
         "num_heads": 24,
         "steps": 16,
         "checkpoint_path": None,
+         "condition_model": "MIDILM"
         
     },
     "MIDILM": {
@@ -45,40 +46,23 @@ MODEL_FACTORY = {
         "steps": 1,
         "seq_len": 0,
         "checkpoint_path": None,
-        
+        "condition_model_name": "AudioLM",
+         
     },
 }
 
-MODEL_PAIRS = {
+MASK_TYPE = {
     "midi_2_audio":{
-        "MIDILM":{
-            "is_freeze": False,
-            "condition_model": None
-        },
-        "AudioLM":{
-            "is_freeze": False,
-            "condition_model": "MIDILM"
-        }
+        "MIDILM": False,
+        "AudioLM":True
     },
     "audio_2_midi":{
-        "MIDILM":{
-            "is_freeze": False,
-            "condition_model": "AudioLM"
-        },
-        "AudioLM":{
-            "is_freeze": False,
-            "condition_model": None
-        }
+        "MIDILM": True,
+        "AudioLM":False
     },
     "bi_di":{
-        "MIDILM":{
-            "is_freeze": False,
-            "condition_model": "AudioLM"
-        },
-        "AudioLM":{
-            "is_freeze": False,
-            "condition_model": "MIDILM"
-        }
+        "MIDILM": True,
+        "AudioLM":True
     }
 
 }

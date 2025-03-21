@@ -13,7 +13,7 @@ from tqdm import tqdm
 from shoelace.actual_shoelace.data_loader import ShoelaceDataset as Dataset
 from shoelace.actual_shoelace.data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.shoelace import Shoelace as Model
-from shoelace.actual_shoelace.config import MODEL_FACTORY, MODEL_PAIRS
+from shoelace.actual_shoelace.config import MODEL_FACTORY, MASK_TYPE
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -161,7 +161,7 @@ def main(args):
                 n_prompts=args.n_prompts,
                 model_configs=MODEL_FACTORY, 
                 task_type=args.task_type,
-                model_pairs=MODEL_PAIRS[args.model_type])
+                mask_type=MASK_TYPE[args.model_type])
     dataset, dataloader = get_dataset(duration=args.duration, rid=0, 
                 batch_size=args.batch_size, task_type=args.task_type)
 
