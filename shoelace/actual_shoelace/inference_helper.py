@@ -36,11 +36,11 @@ def cut_midi(input_ids, hop_len, chunk_len):
 class InferenceHelper:
     def __init__(self, model_folder, n_prompts, model_type, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
-        from shoelace.actual_shoelace.config import MODEL_FACTORY, MODEL_PAIRS
-        self.model = Model(mask_type=None, 
+        from shoelace.actual_shoelace.config import MODEL_FACTORY
+        self.model = Model(mask_type=model_type, 
             device=torch.device("cuda"), 
             model_configs=MODEL_FACTORY, 
-            model_pairs=MODEL_PAIRS[model_type],
+            task_type="full",
             n_prompts=n_prompts)
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
@@ -61,7 +61,7 @@ class InferenceHelper:
             self.model.inference(model_name="MIDILM", 
                             max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
                             cond_model_name="AudioLM", 
-                            use_generator=self.model_type=="bi_di", top_k=16, 
+                            use_generator=True, top_k=16, 
                             last_chunk=True, input_ids=input_ids, 
                             tasks=[tasks[0]],
                             reset_cache=True)
@@ -99,7 +99,7 @@ class InferenceHelper:
                 break
             self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
                             max_len=1, input_ids=input_ids, tasks=[tasks[0]],
-                            use_generator=self.model_type=="bi_di", top_k=top_k, reset_cache=True,
+                            use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
 
 
