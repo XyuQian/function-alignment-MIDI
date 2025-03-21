@@ -26,7 +26,7 @@ MODEL_FACTORY = {
         "num_heads": 24,
         "steps": 16,
         "checkpoint_path": None,
-        "condition_model_name": "MIDILM"
+        "cond_model_name": "MIDILM"
         
     },
     "MIDILM": {
@@ -46,7 +46,7 @@ MODEL_FACTORY = {
         "steps": 1,
         "seq_len": 0,
         "checkpoint_path": None,
-        "condition_model_name": "AudioLM",
+        "cond_model_name": "AudioLM",
          
     },
 }
