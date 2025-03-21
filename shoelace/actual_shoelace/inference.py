@@ -80,14 +80,14 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
 
 
 
-def run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, n_prompts):
+def run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts):
     """Runs inference using a trained MIDI language model."""
     output_folder = os.path.join(output_folder, "midi_2_audio")
     os.makedirs(output_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
     model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, 
-                        model_type=model_type, device=device)
+                        model_type=model_type, device=device, task_type=model_task)
     midi_data_generator = get_midi_data(input_path, task=tasks[0], 
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
@@ -99,14 +99,14 @@ def run_inference_midi_2_audio(model_folder, output_folder, model_type, input_pa
     save_rvq([os.path.join(output_folder, fname)], generated_codes)
 
 
-def run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, n_prompts):
+def run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts):
     """Runs inference using a trained MIDI language model."""
     output_folder = os.path.join(output_folder, "audio_2_midi")
     os.makedirs(output_folder, exist_ok=True)
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*5.12)
     model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, 
-                    model_type=model_type, device=device)
+                    model_type=model_type, device=device, task_type=model_task)
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
                                 hop_frame=hop_frame, device=device, task=tasks[0])
@@ -142,7 +142,7 @@ if __name__ == "__main__":
     model_folder = f"exp/music_jam_{model_type}_{n_prompts}_{model_task}/latest_{model_id}_end"
     if task_type == "audio_2_midi":
         tasks = [audio_mode, midi_mode]
-        run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, n_prompts)
+        run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts)
     elif task_type == "midi_2_audio":
         tasks = [midi_mode, audio_mode]
-        run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, n_prompts)
+        run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts)

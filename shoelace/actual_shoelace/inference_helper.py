@@ -34,13 +34,13 @@ def cut_midi(input_ids, hop_len, chunk_len):
     return prefix, torch.concat([suffix[:1], res_event, suffix[1:]], 0)
 
 class InferenceHelper:
-    def __init__(self, model_folder, n_prompts, model_type, device):
+    def __init__(self, model_folder, n_prompts, task_type, model_type, device):
         from shoelace.actual_shoelace.shoelace import Shoelace as Model
         from shoelace.actual_shoelace.config import MODEL_FACTORY
         self.model = Model(mask_type=model_type, 
             device=torch.device("cuda"), 
             model_configs=MODEL_FACTORY, 
-            task_type="full",
+            task_type=task_type,
             n_prompts=n_prompts)
         self.model.load_weights(model_folder)
         self.model.eval().to(device)

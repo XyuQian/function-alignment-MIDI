@@ -76,7 +76,8 @@ def parse_dict(model_config: dict, model_names: str) -> dict:
 
 class Shoelace(nn.Module):
     def __init__(self, device : torch.device, 
-            n_prompts: int, model_configs: dict, task_type: str, 
+            n_prompts: int, model_configs: dict, 
+            task_type: str, 
             mask_type: dict):
         """
         Initialize the Shoelace model with given configurations.
