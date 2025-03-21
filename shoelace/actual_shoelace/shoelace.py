@@ -228,6 +228,7 @@ class Shoelace(nn.Module):
         
         cond_model = model_dict[cond_model_name]["model_obj"]
         if reset_cache:
+            print("reset cache", model_name, cond_model_name)
             cond_model.reset_cache()
         adapter = model_info["adapter"]
         cond_model_cache = cond_model.get_cache()
