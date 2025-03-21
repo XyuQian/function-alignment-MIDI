@@ -14,7 +14,7 @@ MODEL_FACTORY = {
             "r": 32,
             "lora_alpha": 64,
         },
-        "n_prompts": 5,
+        
         "n_indices": 4,
         "layer_skip": 1,
         "n_layers": 48,
@@ -32,7 +32,7 @@ MODEL_FACTORY = {
             "lora_alpha": 64,
             "model_path": "save_models/midi_lm_0309.pth"
         },
-        "n_prompts": 5,
+        
         "n_indices": 1,
         "layer_skip": 4,
         "n_layers": 12,

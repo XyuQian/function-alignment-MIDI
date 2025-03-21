@@ -30,7 +30,8 @@ def create_mask(a_len: int, b_len: int, n_prompts: int, mask_type: str, device: 
     """
     base_mask = torch.zeros(a_len, b_len)
     r = np.random.rand()
-    print(a_len, b_len)
+    if b_len > 100 and a_len > 100:
+        print(a_len, b_len)
     if r < .5:
         random_mask = torch.rand_like(base_mask)
         # Set positions to -inf based on the mask ratio to block attention.
@@ -98,6 +99,7 @@ class Shoelace(nn.Module):
             
             if model_pairs[key]["condition_model"] is None:
                 config["adapter"] = None
+                config["cond_model_name"] = None
             else:
                 adapter = SholaceParam(
                     n_layers=config["n_layers"],
@@ -163,13 +165,16 @@ class Shoelace(nn.Module):
 
             for model_name, config in model_dict.items():
                 cond_model_name = config["cond_model_name"]
+                if cond_model_name is None:
+                    continue
                 hidden_a = hiddens[model_name]
                 hidden_b = hiddens[cond_model_name]
                 
                 cond_model_name = config["cond_model_name"]
                 main_seq_len, cond_seq_len, device = hidden_a[0]["query"].shape[1], \
                     hidden_b[0]["query"].shape[1], hidden_a[0]["query"].device
-                masks[model_name] = create_mask(main_seq_len, cond_seq_len, self.n_prompts, self.mask_type, device)
+                masks[model_name] = create_mask(main_seq_len, cond_seq_len, 
+                    self.n_prompts, self.mask_type, device)
                 
                 
                 if i % config["layer_skip"] == 0 and config["adapter"]:

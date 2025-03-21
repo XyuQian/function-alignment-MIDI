@@ -11,7 +11,7 @@ from shoelace.utils.network_utils import transform_inputs
 
 TOL_WIN = 0
 
-TAIL_STEP = 256
+TAIL_STEP = 64
 
 
 
@@ -248,7 +248,7 @@ def collate_fn(batch):
     
     audio_tasks = [b[3] for b in batch]
     midi_tasks = [b[4] for b in batch]
-    print(midi_data.shape)
+    print(midi_index[:, -1])
 
     return {
         "AudioLM": {
