@@ -52,7 +52,7 @@ def get_midi_data(path, chunk_frame, hop_frame, device, task):
         else:
             res_st_id = res_ed_id = 0
         
-        seq = events[event_st_id : event_ed_id]
+        seq = events[event_st_id : event_ed_id + 1]
         if res_st_id < res_ed_id:
             seq = np.concatenate([seq[:1], res_events[res_st_id : res_ed_id], seq[1:]], 0)
         input_ids = torch.from_numpy(seq).long().unsqueeze(0).to(device)
@@ -141,6 +141,6 @@ if __name__ == "__main__":
     if task_type == "audio_2_midi":
         tasks = [audio_mode, midi_mode]
         run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, n_prompts)
-    elif task_type == "mmidi_2_audio":
+    elif task_type == "midi_2_audio":
         tasks = [midi_mode, audio_mode]
         run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, n_prompts)
