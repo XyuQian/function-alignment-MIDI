@@ -77,7 +77,7 @@ class InferenceHelper:
             results.append(audio_codes[:, :hop_frame])
             audio_prompt = audio_codes[:, hop_frame:chunk_frame]
             
-            
+            break
             n_id += 1
             if n_id > 3:
                 break

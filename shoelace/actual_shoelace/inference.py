@@ -80,7 +80,7 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
 
 
 
-def run_inference_midi_2_audio(model, output_folder, input_path, fname, model_task):
+def run_inference_midi_2_audio(model, output_folder, input_path, fname, tasks):
     """Runs inference using a trained MIDI language model."""
     
     chunk_frame = int(FRAME_RATE*15.36)
@@ -92,7 +92,7 @@ def run_inference_midi_2_audio(model, output_folder, input_path, fname, model_ta
     generated_codes, input_ids = model.midi_2_audio(midi_data_generator, 
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=100, tasks=tasks)
 
-    fname = fname + "_".join(tasks)
+    fname = fname + "_" + "2".join(tasks)
     decode(os.path.join(output_folder, f"{fname}.mid"), input_ids[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], generated_codes)
 
@@ -110,7 +110,7 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     midi_codes, audio_codes = model.audio_2_midi(audio_data_generator, tasks=tasks,
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=16)
     
-    fname = fname + "_".join(tasks)
+    fname = fname + "_" + "2".join(tasks)
     decode(os.path.join(output_folder, f"{fname}.mid"), midi_codes[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], audio_codes)
 
@@ -160,6 +160,6 @@ if __name__ == "__main__":
         files = [f.rstrip() for f in files]
         for f in files:
             fname = f.split("/")[-2].split("-")[0]
-            inference_fn(model, output_folder, f, fname, model_task)
+            inference_fn(model, output_folder, f, fname, tasks)
     else:
-        inference_fn(model, output_folder, input_path, args.fname, model_task)
+        inference_fn(model, output_folder, input_path, args.filename, tasks)

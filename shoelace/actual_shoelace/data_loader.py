@@ -109,7 +109,7 @@ class ShoelaceDataset(Dataset):
                     audio_len = min(hf[f"{fid}.audio.{tag}"].shape[0] for tag in tasks["audio"])
                     total_len = audio_len - max_frame
 
-                    for start_idx in range(0, total_len, SEG_RES):
+                    for start_idx in range(0, total_len, SEG_RES*2):
                         # Worker assignment
                         worker_slot = str(i % num_workers)
                         sample = {
