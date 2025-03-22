@@ -109,20 +109,18 @@ class InferenceHelper:
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
-            print("midi_codes", midi_codes)
+
             prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_len, chunk_len - 2)
-            print(n_id, "prefix", prefix)
-            print(n_id, "midi_prompt", midi_prompt)
             results.append(prefix.unsqueeze(0))
             midi_prompt = midi_prompt.unsqueeze(0)
             
             n_id += 1
-            if n_id > 4:
+            if n_id > 1:
                 break
         
         
-        # results.append(remove_head(midi_prompt))
-        # midi_codes = torch.concat(results, 1)
+        results.append(remove_head(midi_prompt))
+        midi_codes = torch.concat(results, 1)
         return midi_codes, input_ids.transpose(1, 2)
 
 

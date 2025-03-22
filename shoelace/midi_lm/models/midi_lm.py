@@ -333,7 +333,7 @@ class MIDILM(nn.Module):
 
                 if next_token[0, 0] == SEG_RES:
                     seg_complete = True
-                    index_cursor += 1
+                    index_cursor = index_cursor + 1
                 if last_chunk:
                     break
 
