@@ -109,10 +109,10 @@ class InferenceHelper:
                             last_chunk=False, input_ids=midi_prompt, 
                             cond_indices=audio_index,
                             batch_size=len(input_ids), device=input_ids.device)
-            print(midi_codes)
+            print("midi_codes", midi_codes)
             prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_len, chunk_len - 2)
-            # print("prefix", prefix)
-            print("midi_prompt", midi_prompt)
+            print(n_id, "prefix", prefix)
+            print(n_id, "midi_prompt", midi_prompt)
             results.append(prefix.unsqueeze(0))
             midi_prompt = midi_prompt.unsqueeze(0)
             
