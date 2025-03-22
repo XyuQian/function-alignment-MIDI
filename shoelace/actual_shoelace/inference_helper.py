@@ -117,7 +117,7 @@ class InferenceHelper:
             midi_prompt = midi_prompt.unsqueeze(0)
             
             n_id += 1
-            if n_id > 3:
+            if n_id > 1:
                 break
         
         

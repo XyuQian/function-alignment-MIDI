@@ -101,7 +101,7 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     """Runs inference using a trained MIDI language model."""
     
     chunk_frame = int(FRAME_RATE*15.36)
-    hop_frame = int(FRAME_RATE*5.12)
+    hop_frame = int(FRAME_RATE*7.86)
     
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
@@ -159,7 +159,7 @@ if __name__ == "__main__":
             files = f.readlines()
         files = [f.rstrip() for f in files]
         for f in files:
-            fname = f.split("/")[-2].split("-")[0]
+            fname = "_".join(f.split("/"))
             inference_fn(model, output_folder, f, fname, tasks)
     else:
         inference_fn(model, output_folder, input_path, args.filename, tasks)
