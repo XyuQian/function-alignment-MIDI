@@ -132,6 +132,26 @@ class Shoelace(nn.Module):
         for model_name in self.model_dict:
             self.model_dict[model_name]["model_obj"].reset_cache()
 
+    def crossable_dict(self):
+        crossable = {}
+        for model_name in self.mask_type:
+            if model_name in crossable:
+                continue
+            cond_model_name = self.model_dict[model_name]["cond_model_name"]
+            if self.mask_type[model_name] and self.mask_type[cond_model_name]:
+                if cond_model_name in crossable and not crossable[cond_model_name]:
+                    crossable[model_name] = True
+                else:
+                    r = np.random.rand()
+                    if r < .5:
+                        crossable[model_name] = True
+                        crossable[cond_model_name] = False
+                    else:
+                        crossable[model_name] = False
+            else:
+                crossable[model_name] = self.mask_type[model_name]
+        return crossable
+
     def forward(self, args: dict) -> dict:
         """
         Forward pass of the Shoelace model.
@@ -156,6 +176,11 @@ class Shoelace(nn.Module):
         hiddens = {}
         masks = {}
 
+        self.mask_type[model_name]
+        
+                
+        mask_type = self.crossable_dict()
+
         # Iterate through layers and perform cross-attention when appropriate.
         for i in range(max_n_layers):
             
@@ -173,14 +198,14 @@ class Shoelace(nn.Module):
                     
                     indices_a=args[model_name]["indices"]
                     indices_b=args[cond_model_name]["indices"]
-
+                    crossable = mask_type[model_name]
                     masks[model_name] = create_mask(
                         batch_size=len(hidden_a[0]["q"]),
                         padding_a=(indices_a == IDX_PAD), 
                         padding_b=(indices_b == IDX_PAD),
                         a_len=len(indices_a), 
                         b_len=len(indices_b),
-                        mask_type=self.mask_type[model_name],
+                        mask_type=crossable,
                         n_prompts=self.n_prompts)
 
                     adapt_output = config["adapter"](layer_idx=i // config["layer_skip"],
@@ -222,6 +247,7 @@ class Shoelace(nn.Module):
         layer_skip = model_info["layer_skip"]
         cond_layer_skip = model_dict[cond_model_name]["layer_skip"]
         max_n_layers = max(model_dict[model_name]["n_layers"], model_dict[cond_model_name]["n_layers"])
+        
         for i in range(2333333):
             main_indices = next(model_gen)
             if "output" in main_indices:
