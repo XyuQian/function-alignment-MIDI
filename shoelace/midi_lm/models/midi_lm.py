@@ -298,8 +298,7 @@ class MIDILM(nn.Module):
             midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device)
             midi_index = F.pad(midi_index, (1, 0), "constant", 0)
             cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1) if x is not None else 0
-            print("x", x)
-            print("index", cur_timing, midi_index)
+            
 
         prompt = x
         assert cur_timing < max_len
