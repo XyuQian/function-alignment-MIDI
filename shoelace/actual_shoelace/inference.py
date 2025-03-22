@@ -80,38 +80,37 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
 
 
 
-def run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts):
+def run_inference_midi_2_audio(model, output_folder, input_path,  model_task):
     """Runs inference using a trained MIDI language model."""
     
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
-    model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, 
-                        model_type=model_type, device=device, task_type=model_task)
+    
     midi_data_generator = get_midi_data(input_path, task=tasks[0], 
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
     generated_codes, input_ids = model.midi_2_audio(midi_data_generator, 
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=100, tasks=tasks)
 
-    fname = "_".join(tasks) + "_" + input_path.split("/")[-1].split(".mid")[0]
+    fname = "_".join(tasks + ["_"] + input_path.split("/"))
     decode(os.path.join(output_folder, f"{fname}.mid"), input_ids[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], generated_codes)
 
 
-def run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts):
+def run_inference_audio_2_midi(model, output_folder, input_path, tasks):
     """Runs inference using a trained MIDI language model."""
     
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*5.12)
-    model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, 
-                    model_type=model_type, device=device, task_type=model_task)
+    
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
                                 hop_frame=hop_frame, device=device, task=tasks[0])
 
     midi_codes, audio_codes = model.audio_2_midi(audio_data_generator, tasks=tasks,
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=16)
-    fname = "_".join(tasks) + "_" + input_path.split("/")[-1].split(".")[0]
+    
+    fname = "_".join(tasks + ["_"] + input_path.split("/"))
     decode(os.path.join(output_folder, f"{fname}.mid"), midi_codes[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], audio_codes)
 
@@ -141,9 +140,24 @@ if __name__ == "__main__":
     output_folder = os.path.join(output_folder, f"music_jam_{model_type}_{n_prompts}_{model_task}", 
         f"latest_{model_id}_end", task_type)
     os.makedirs(output_folder, exist_ok=True)
+
+    model = InferenceHelper(model_folder=model_folder, n_prompts=n_prompts, 
+                    model_type=model_type, device=device, task_type=model_task)
+
+    
     if task_type == "audio_2_midi":
         tasks = [audio_mode, midi_mode]
-        run_inference_audio_2_midi(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts)
+        inference_fn = run_inference_audio_2_midi
+       
     elif task_type == "midi_2_audio":
         tasks = [midi_mode, audio_mode]
-        run_inference_midi_2_audio(model_folder, output_folder, model_type, input_path, tasks, model_task, n_prompts)
+        inference_fn = run_inference_midi_2_audio
+    
+    if str.endswith(input_path, ".lst"):
+        with open(input_path, "r") as f:
+            files = f.readlines()
+        files = [f.rstrip() for f in files]
+        for f in files:
+            inference_fn(model, output_folder, f,  model_task)
+    else:
+        inference_fn(model, output_folder, input_path,  model_task)
