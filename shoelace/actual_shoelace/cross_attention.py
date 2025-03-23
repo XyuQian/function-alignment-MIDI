@@ -90,7 +90,7 @@ class LowRankMultiheadAttention(nn.Module):
             
             kv_x = prompt
             key_pos = torch.zeros([len(kv_x), kv_x.shape[1], self.embed_dim]).to(kv_x.device)
-            print("none", key_pos.shape)
+            
             
         else:
             
