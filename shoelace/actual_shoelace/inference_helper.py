@@ -96,8 +96,7 @@ class InferenceHelper:
         for input_ids, audio_index in input_ids_generator:
             if audio_index is None:
                 break
-            if n_id == 0:
-                self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
+            self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
                             max_len=-1, input_ids=input_ids, tasks=[tasks[0]],
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
