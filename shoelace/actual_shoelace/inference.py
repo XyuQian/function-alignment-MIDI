@@ -42,7 +42,7 @@ def get_midi_data(path, chunk_frame, hop_frame, device, task):
 
     chunk_len = int(chunk_frame//SEG_RES)
     hop_len = int(hop_frame//SEG_RES)
-    for st_id in range(30, len(sos) - chunk_len, hop_len):
+    for st_id in range(0, len(sos) - chunk_len, hop_len):
         event_st_id = sos[st_id]
         event_ed_id = sos[st_id + chunk_len]
         
