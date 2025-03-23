@@ -77,14 +77,13 @@ def process_file(file_list_path):
     results = []
     with open(file_list_path, 'r') as f:
         # Read non-empty lines
-        lines = [line.strip() for line in f if line.strip()]
+        lines = [line.strip().split("\t") for line in f if line.strip()]
     
     if len(lines) % 2 != 0:
         raise ValueError("The file should contain an even number of non-empty lines (groundtruth/generated pairs).")
     
-    for i in range(0, len(lines), 2):
-        gt_path = lines[i]
-        gen_path = lines[i+1]
+    for gt_path, gen_path in lines:
+  
         try:
             gt_notes = load_melody_track(gt_path)
         except ValueError as e:
