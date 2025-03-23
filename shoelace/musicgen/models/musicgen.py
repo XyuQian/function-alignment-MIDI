@@ -116,7 +116,7 @@ class MusicGen(nn.Module):
         max_len = 1 if max_len == -1 else max_len  
 
         for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
-            print(input_codes.shape, index.shape)
+   
             if self.use_generator:
                 yield {
                     "index": index

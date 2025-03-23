@@ -73,7 +73,7 @@ def get_audio_data(path, chunk_frame, hop_frame, device, task):
     for i in range(hop_frame*3, len(rvq_codes), hop_frame):
         ed = i + chunk_frame if i + chunk_frame < len(rvq_codes) else len(rvq_codes)
         audio_chunk = torch.from_numpy(rvq_codes[i : ed])
-        index = torch.arange(len(audio_chunk))
+        index = torch.arange(len(audio_chunk) + 3)
         index = F.pad(index, (1, 0), "constant", 0)
         yield audio_chunk.unsqueeze(0).to(device), index.unsqueeze(0).to(device)
     yield torch.from_numpy(rvq_codes).unsqueeze(0).to(device), None

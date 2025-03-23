@@ -233,6 +233,7 @@ class LMModel(nn.Module):
 
         logits = torch.stack([self.linears[i](out) for i in range(K)], dim=-2)
         if self.fuser.fuse2cond['prepend']:
+            print("???")
             logits = logits[:, -S:]
         return logits
 
