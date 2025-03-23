@@ -102,7 +102,7 @@ class MusicGen(nn.Module):
         """
         
         prompt = preprocess(input_ids, batch_size=batch_size, device=device)
-        codes = prompt[:, :-3] if max_len > -1 else codes
+        codes = prompt[:, :-3] if max_len > -1 else prompt
         prompt_len = codes.shape[1]
         input_codes = codes
         index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0)
