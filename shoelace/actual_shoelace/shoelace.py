@@ -5,7 +5,7 @@ import os
 import numpy as np
 from shoelace.actual_shoelace.config import IDX_PAD
 # Assuming these are imported from your own library or files
-from shoelace.utils.network_utils import freeze, print_params
+from shoelace.utils.network_utils import print_params
 from shoelace.actual_shoelace.task_config import TASKS, MODEL_MAPPING
 from .cross_attention import SholaceParam
 

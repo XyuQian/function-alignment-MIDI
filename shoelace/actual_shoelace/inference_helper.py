@@ -59,12 +59,12 @@ class InferenceHelper:
             # print(input_ids)
             # print(mii_index)
             self.model.inference(model_name="MIDILM", 
-                            max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
-                            cond_model_name="AudioLM", 
-                            use_generator=True, top_k=16, 
-                            last_chunk=True, input_ids=input_ids, 
-                            tasks=[tasks[0]],
-                            reset_cache=True)
+                        max_len=(input_ids[0, :, 0] == SEG_RES).sum(),
+                        cond_model_name="AudioLM", 
+                        use_generator=True, top_k=16, 
+                        last_chunk=True, input_ids=input_ids, 
+                        tasks=[tasks[0]],
+                        reset_cache=True)
 
 
             audio_codes = self.model.inference(model_name="AudioLM", 
@@ -77,10 +77,9 @@ class InferenceHelper:
             results.append(audio_codes[:, :hop_frame])
             audio_prompt = audio_codes[:, hop_frame:chunk_frame]
             
-            break
+            
             n_id += 1
-            if n_id > 3:
-                break
+            
             
         results.append(audio_prompt)
         audio_codes = torch.concat(results, 1).transpose(1, 2)
@@ -97,7 +96,8 @@ class InferenceHelper:
         for input_ids, audio_index in input_ids_generator:
             if audio_index is None:
                 break
-            self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
+            if n_id == 0:
+                self.model.inference(model_name="AudioLM", cond_model_name="MIDILM",
                             max_len=1, input_ids=input_ids, tasks=[tasks[0]],
                             use_generator=True, top_k=top_k, reset_cache=True,
                             last_chunk=True, device=input_ids.device)
@@ -115,9 +115,7 @@ class InferenceHelper:
             midi_prompt = midi_prompt.unsqueeze(0)
             
             n_id += 1
-            if n_id > 1:
-                break
-        
+            
         
         results.append(remove_head(midi_prompt))
         midi_codes = torch.concat(results, 1)
