@@ -90,8 +90,12 @@ def run_inference_midi_2_audio(model, output_folder, input_path, fname, tasks):
     fname = fname + "_" + "2".join(tasks)
     ref_path = os.path.join(output_folder, f"{fname}.mid")
     if os.path.exists(ref_path):
-        print("skip", input_path)
-        return 
+        print("skip", ref_path)
+        return
+    else:
+        print("begin", ref_path)
+        return
+     
     midi_data_generator = get_midi_data(input_path, task=tasks[0], 
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
@@ -111,8 +115,11 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     fname = fname + "_" + "2".join(tasks)
     ref_path = os.path.join(output_folder, fname + ".wav")
     if os.path.exists(ref_path):
-        print("skip", input_path)
-        return 
+        print("skip", ref_path)
+        return
+    else:
+        print("begin", ref_path)
+        return
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
                                 hop_frame=hop_frame, device=device, task=tasks[0])
