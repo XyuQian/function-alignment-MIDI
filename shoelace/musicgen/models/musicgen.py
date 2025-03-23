@@ -100,18 +100,20 @@ class MusicGen(nn.Module):
         """
         Performs inference by generating a sequence step-by-step.
         """
-
+        
         prompt = preprocess(input_ids, batch_size=batch_size, device=device)
-        codes = prompt[:, :-3]
+        codes = prompt[:, :-3] if max_len > -1 else codes
         prompt_len = codes.shape[1]
         input_codes = codes
         index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0)
-        if input_codes.shape[1] > 1:
+        
+        if input_ids is None:
+            initial = True
+        else:
             index = F.pad(index[:, :-1], (1, 0), "constant", 0)
             initial = False
-        else:
-            initial = True
             
+        max_len = 1 if max_len == -1 else max_len  
 
         for i in tqdm(range(max_len), initial=prompt_len, desc="Musicgen Inference", total=max_len + prompt_len):
             if self.use_generator:
