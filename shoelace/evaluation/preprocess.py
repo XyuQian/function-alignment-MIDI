@@ -16,7 +16,7 @@ def generate_file_pairs(input_path, output_path):
                 # Construct the groundtruth MIDI path.
                 groundtruth = f"data/POP909/{id_str}/{id_str}.mid"
                 # Write the groundtruth and generated path pair on the same line.
-                outfile.write(f"{groundtruth} {line}\n")
+                outfile.write(f"{groundtruth}\t{line}\n")
             else:
                 print(f"Warning: Could not extract ID from line: {line}")
 
