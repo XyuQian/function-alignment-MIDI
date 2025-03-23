@@ -87,14 +87,17 @@ def run_inference_midi_2_audio(model, output_folder, input_path, fname, tasks):
     
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
-    
+    fname = fname + "_" + "2".join(tasks)
+    ref_path = os.path.join(output_folder, f"{fname}.mid")
+    if os.path.exists(ref_path):
+        return 
     midi_data_generator = get_midi_data(input_path, task=tasks[0], 
                             chunk_frame=chunk_frame, hop_frame=hop_frame, device=device)
 
     generated_codes, input_ids = model.midi_2_audio(midi_data_generator, 
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=100, tasks=tasks)
 
-    fname = fname + "_" + "2".join(tasks)
+    
     decode(os.path.join(output_folder, f"{fname}.mid"), input_ids[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], generated_codes)
 
@@ -104,7 +107,10 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     
     chunk_frame = int(FRAME_RATE*15.36)
     hop_frame = int(FRAME_RATE*7.68)
-    
+    fname = fname + "_" + "2".join(tasks)
+    ref_path = os.path.join(output_folder, fname + ".wav")
+    if os.path.exists(ref_path):
+        return 
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
                                 hop_frame=hop_frame, device=device, task=tasks[0])
@@ -112,7 +118,7 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     midi_codes, audio_codes = model.audio_2_midi(audio_data_generator, tasks=tasks,
                 chunk_frame=chunk_frame, hop_frame=hop_frame, top_k=16)
     
-    fname = fname + "_" + "2".join(tasks)
+    
     decode(os.path.join(output_folder, f"{fname}.mid"), midi_codes[0].cpu().numpy())
     save_rvq([os.path.join(output_folder, fname)], audio_codes)
 
@@ -163,6 +169,6 @@ if __name__ == "__main__":
         for f in files:
             fname = "_".join(f.split("/"))
             inference_fn(model, output_folder, f, fname, tasks)
-            break
+            
     else:
         inference_fn(model, output_folder, input_path, args.filename, tasks)
