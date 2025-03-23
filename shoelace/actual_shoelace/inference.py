@@ -103,7 +103,7 @@ def run_inference_audio_2_midi(model, output_folder, input_path, fname, tasks):
     """Runs inference using a trained MIDI language model."""
     
     chunk_frame = int(FRAME_RATE*15.36)
-    hop_frame = int(FRAME_RATE*7.86)
+    hop_frame = int(FRAME_RATE*7.68)
     
     
     audio_data_generator = get_audio_data(input_path, chunk_frame=chunk_frame, 
