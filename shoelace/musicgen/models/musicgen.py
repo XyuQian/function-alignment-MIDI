@@ -105,7 +105,7 @@ class MusicGen(nn.Module):
         codes = prompt[:, :-3] if max_len > -1 else prompt
         prompt_len = codes.shape[1]
         input_codes = codes
-        index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0)
+        index = torch.arange(input_codes.shape[1]).to(device).unsqueeze(0) + 1
         
         if input_ids is None:
             initial = True
@@ -128,8 +128,8 @@ class MusicGen(nn.Module):
                     with_postprocess=False, return_val=False)
             
             next_token = sample(logits[:, -1], top_k_val=top_k)
-            index = index[:, -1:] if initial else index[:, -1:] + 1
-            initial = False
+            index =  index[:, -1:] + 1
+            
             if i + prompt_len - 1 < 3 and (prompt[:, prompt_len + i] == PAD).sum() > 0:
                 prompt[:, prompt_len + i , :i + 1] = next_token[:, : i + 1]
                 codes = prompt[:, :prompt_len + i + 1]
