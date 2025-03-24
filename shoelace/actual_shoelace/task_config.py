@@ -7,9 +7,9 @@ TASKS = {
         "midi": ["full", "melody", "accompaniment", "beats", "chords"],
         "audio": ["full", "vocals", "accompaniment", "beats", "chords"]
     },
-    "complex": {
-        "midi": ["full", "melody", "accompaniment", "chords"],
-        "audio": ["full", "vocals", "accompaniment", "chords"]
+    "multi-track": {
+        "midi": ["multi-track"],
+        "audio": ["multi-track"]
     },
     "mono":{
         "audio": ["vocals"],

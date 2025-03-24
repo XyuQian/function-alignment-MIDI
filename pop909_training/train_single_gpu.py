@@ -10,8 +10,8 @@ from shoelace.utils.trainer_utils import Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
-from shoelace.slakh2100_training.data_loader import ShoelaceDataset as Dataset
-from shoelace.slakh2100_training.data_loader import collate_fn, worker_init_fn
+from shoelace.pop909_training.data_loader import ShoelaceDataset as Dataset
+from shoelace.pop909_training.data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.shoelace import Shoelace as Model
 from shoelace.actual_shoelace.config import MODEL_FACTORY, MASK_TYPE
 
@@ -26,7 +26,7 @@ def get_dataset(rid, duration, batch_size, task_type, validation=False):
     dataset = Dataset(
         duration=duration,
         validation=validation,
-        path_folder="data/formatted/slakh2100",
+        path_folder="data/formatted/pop909",
         rid=rid,
         task_type=task_type,
         num_workers=num_workers

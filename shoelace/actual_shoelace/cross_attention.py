@@ -105,8 +105,6 @@ class LowRankMultiheadAttention(nn.Module):
         q = q + rearrange(q_pos, "b t (h d) -> b h t d", h=self.num_heads)
         attn_output = self.compute_attention(q, key, value, attn_mask)
 
-        
-
         return attn_output * self.gates + vanilla_attn_output
 
     def compute_attention(self, q, key, value, attn_mask):

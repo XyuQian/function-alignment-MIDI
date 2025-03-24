@@ -17,8 +17,6 @@ TAIL_STEP = 64
 MAX_SEQ_LEN = 512
 
 
-
-
 def load_data_lst(path_folder: str, validation: bool):
     """
     Load file lists and corresponding hdf5 feature paths from a specified folder.
@@ -31,10 +29,10 @@ def load_data_lst(path_folder: str, validation: bool):
             files: A list of lists, each sub-list containing .lst entries for a subset.
             feature_paths: A list of .h5 file paths (one per .lst file).
     """
-    text_dir = os.path.join(path_folder, "text")
-    feature_dir = os.path.join(path_folder, "feature_5_tasks")
 
-    text_dir = text_dir + "_eval" if validation else text_dir
+    feature_dir = os.path.join(path_folder, "feature")
+
+    text_dir = os.path.join(path_folder, "text_eval") if validation else os.path.join(path_folder, "text_train")
 
     all_files = []
     all_feature_paths = []
@@ -42,15 +40,16 @@ def load_data_lst(path_folder: str, validation: bool):
     for f in os.listdir(text_dir):
         
         path_lst = os.path.join(text_dir, f)
-        path_h5 = os.path.join(feature_dir, f.replace(".lst", ".h5"))
+        path_h5 = os.path.join(feature_dir, "train.h5" if not validation else "validation.h5")
 
         with open(path_lst, "r") as pf:
             lines = [ln.strip().split("\t")[0] for ln in pf]
-            lines = [ln.split("/")[-2] for ln in lines]
-
+        # lines = lines[:10]
+        
         all_files.append(lines)
         all_feature_paths.append(path_h5)
         
+    
 
     return all_files, all_feature_paths
 
@@ -106,7 +105,7 @@ class ShoelaceDataset(Dataset):
                 for j, fid in tqdm(enumerate(self.files[i]), total=len(self.files),
                                      desc=f"prepare dataset {i} / {len(self.feature_paths)}"):
                     
-                    full_audio = f"{fid}.audio.full"
+                    full_audio = f"{fid}.audio.multi-track"
                     if full_audio not in hf:
                         print("error", full_audio)
                         continue

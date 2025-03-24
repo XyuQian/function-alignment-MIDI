@@ -10,8 +10,8 @@ from shoelace.utils.trainer_utils import Trainer
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
 from tqdm import tqdm
-from shoelace.slakh2100_training.data_loader import ShoelaceDataset as Dataset
-from shoelace.slakh2100_training.data_loader import collate_fn, worker_init_fn
+from shoelace.actual_shoelace.data_loader import ShoelaceDataset as Dataset
+from shoelace.actual_shoelace.data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.shoelace import Shoelace as Model
 from shoelace.actual_shoelace.config import MODEL_FACTORY, MASK_TYPE
 

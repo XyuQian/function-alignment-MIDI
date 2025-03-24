@@ -76,15 +76,33 @@ def process_data(file_lst_path, data_folder, output_path):
       - Audio features for original, vocals, non-vocal (acc), chord, and beat.
     """
     with open(file_lst_path, "r", encoding="utf-8") as f:
-        lines = [line.rstrip().split("\t")[0] for line in f.readlines()]
+        lines = [[line.rstrip().split("\t")[0].split("/")[-2]] + line.rstrip().split("\t") for line in f.readlines()]
     
     with h5py.File(output_path, "a") as hf:
-        for midi_path, audio_path in lines:
-            print(midi_path, midi_path)
+        for fid, ori_midi_path, ori_audio_path in lines:
+            print(fid, ori_midi_path, ori_audio_path)
+            if fid in ["196"]:
+                continue
 
+            # Determine folder paths.
+            midi_folder = os.path.join(*ori_midi_path.split("/")[:-1])
+            audio_folder = ori_audio_path.split(".mp3")[0]
+            if not os.path.exists(audio_folder):
+                audio_folder = encode_unicode_string(audio_folder)
+            
+            # Construct file paths.
+            midi_path       = os.path.join(midi_folder, f"{fid}.mid")
+            midi_chord_path = os.path.join(data_folder, "chords", f"{fid}.mid")
+            midi_beat_path  = os.path.join(data_folder, "beats", f"{fid}.mid")
+            
+            # Dictionary of MIDI configurations:
+            # Each tuple: (tag, path, extra_params)
             midi_configs = [
+                ("melody", midi_path, {"melody_only": True, "acc_only": False, "extract_melody": True}),
+                ("accompaniment",    midi_path, {"melody_only": False, "acc_only": True, "extract_melody": True}),
                 ("full",   midi_path, {"melody_only": False, "acc_only": False, "extract_melody": True}),
-                
+                ("chords",  midi_chord_path, {"melody_only": False, "acc_only": False, "extract_melody": False}),
+                ("beats",   midi_beat_path, {"melody_only": False, "acc_only": False, "extract_melody": False})
             ]
             
             # Process each MIDI configuration.
@@ -106,7 +124,11 @@ def process_data(file_lst_path, data_folder, output_path):
             
             # Dictionary mapping audio keys to file paths.
             audio_mapping = {
-                "full":    audio_path,
+                "full":    audio_folder + ".mp3",
+                "vocals":  os.path.join(audio_folder, "vocals.wav"),
+                "accompaniment":     os.path.join(audio_folder, "no_vocals.wav"),
+                "beats":    os.path.join(data_folder, "beats", f"{fid}.wav"),
+                "chords":   os.path.join(data_folder, "chords", f"{fid}.wav")
             }
             
             # Process and store each audio feature.
@@ -123,9 +145,9 @@ def process_data(file_lst_path, data_folder, output_path):
 
 if __name__ == "__main__":
     fid = sys.argv[1]
-    tokens_folder = "data/formatted/slakh2100/feature"
-    file_lst_path = f"data/formatted/slakh2100/text/{fid}.lst"
+    tokens_folder = "data/formatted/pop909/feature_5_tasks"
+    file_lst_path = f"data/formatted/pop909/text_eval/{fid}.lst"
     os.makedirs(tokens_folder, exist_ok=True)
     output_path = os.path.join(tokens_folder, f"{fid}.h5")
-    data_folder = "data/formatted/slakh2100/"
+    data_folder = "data/formatted/pop909/"
     process_data(file_lst_path, data_folder, output_path)
