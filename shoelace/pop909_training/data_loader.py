@@ -14,7 +14,7 @@ from shoelace.utils.network_utils import transform_inputs
 TOL_WIN = 0
 
 TAIL_STEP = 64
-MAX_SEQ_LEN = 512
+MAX_SEQ_LEN = 256
 
 
 
