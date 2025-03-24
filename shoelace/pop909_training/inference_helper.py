@@ -14,7 +14,7 @@ def cut_midi(input_ids, hop_len, chunk_len):
     seg_pos = seg_pos[input_ids[:, 0] == SEG_RES]
     prefix = input_ids[:seg_pos[hop_len]]
     suffix = input_ids[seg_pos[hop_len]: seg_pos[chunk_len] + 1]
-    return prefix, suffix
+    return prefix.unsqueeze(0), suffix.unsqueeze(0)
     sustain = hop_len + 1
     res_events = []
     for i, event in enumerate(prefix):
