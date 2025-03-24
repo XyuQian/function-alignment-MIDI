@@ -12,7 +12,7 @@ from shoelace.midi_lm.models.config import SEG_RES, PAD
 from shoelace.datasets.preprocess_midi import load_midi
 from shoelace.musicgen.finetune.config import FRAME_RATE
 from shoelace.datasets.utils import decode
-from shoelace.slakh2100_training.inference_helper import InferenceHelper
+from shoelace.pop909_training.inference_helper import InferenceHelper
 
 device = "cuda"
 SEQ_LEN = 512
@@ -154,8 +154,8 @@ if __name__ == "__main__":
     model_task = args.model_task
     n_prompts = int(args.n_prompts)
 
-    model_folder = f"exp/music_jam_{model_type}_{n_prompts}_{model_task}/latest_{model_id}_end"
-    output_folder = os.path.join(output_folder, f"music_jam_{model_type}_{n_prompts}_{model_task}", 
+    model_folder = f"exp/cma_{model_type}_{n_prompts}_{model_task}/latest_{model_id}_end"
+    output_folder = os.path.join(output_folder, f"cma_{model_type}_{n_prompts}_{model_task}", 
         f"latest_{model_id}_end", task_type)
     os.makedirs(output_folder, exist_ok=True)
 
