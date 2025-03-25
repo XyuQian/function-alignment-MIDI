@@ -107,12 +107,11 @@ class ShoelaceDataset(Dataset):
                     
                     full_audio = f"{fid}.audio.multi-track"
                     if full_audio not in hf:
-                        print("error", full_audio)
                         continue
                     audio_len = min(hf[f"{fid}.audio.{tag}"].shape[0] for tag in tasks["audio"])
                     total_len = audio_len - max_frame
 
-                    for start_idx in range(0, total_len, SEG_RES*2):
+                    for start_idx in range(0, total_len, SEG_RES):
                         # Worker assignment
                         worker_slot = str(i % num_workers)
                         sample = {
@@ -131,7 +130,6 @@ class ShoelaceDataset(Dataset):
                             end_pos = len(event_indices) - 1 if end_pos >= len(event_indices) else end_pos
                             midi_st = event_indices[start_pos]
                             midi_ed = event_indices[end_pos]
-                            
 
                             if start_pos + 1 < len(res_event_indices):
                                 midi_prefix_st = res_event_indices[start_pos]
@@ -193,25 +191,17 @@ class ShoelaceDataset(Dataset):
         midi_tags = [tag for tag in sample["midi"]]
         midi_tag = midi_tags[np.random.randint(len(midi_tags))]
         midi_st, midi_ed, midi_prefix_st, midi_prefix_ed = sample["midi"][midi_tag]
-        events = self.cache_data[f"{fid}.midi.{midi_tag}.events"]
-        new_st = midi_st
-        midi_ed = min(midi_ed, len(events))
-        if midi_ed - midi_st < MAX_SEQ_LEN:
-            midi_ed = np.random.randint(midi_ed, min(midi_ed + MAX_SEQ_LEN // 2, len(events) + 1))
-            if midi_ed - midi_st < MAX_SEQ_LEN:
-                new_st = np.random.randint(max(midi_st - (MAX_SEQ_LEN - (midi_ed - midi_st)), 0), midi_st + 1)
-        
-        while events[new_st, 0] < SEG_RES:
-            new_st += 1
 
-        midi_segment = events[new_st : midi_ed]
+        events_len = len(self.cache_data[f"{fid}.midi.{midi_tag}.events"])
+        midi_ed = midi_ed + 1 if midi_ed + 1 < events_len else events_len
+        midi_segment = self.cache_data[f"{fid}.midi.{midi_tag}.events"][midi_st : midi_ed]
 
-        # if midi_prefix_ed > midi_prefix_st:
-        #     prefix = self.cache_data[f"{fid}.midi.{midi_tag}.res_events"][midi_prefix_st : midi_prefix_ed]
-        #     midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
+        if midi_prefix_ed > midi_prefix_st:
+            prefix = self.cache_data[f"{fid}.midi.{midi_tag}.res_events"][midi_prefix_st : midi_prefix_ed]
+            midi_segment = np.concatenate([midi_segment[:1], prefix, midi_segment[1:]], axis=0)
 
         midi_segment[midi_segment < 0] = PAD
-        return audio_segment, midi_segment, audio_tag, midi_tag, midi_st - new_st
+        return audio_segment, midi_segment, audio_tag, midi_tag
 
     def reset_random_seed(self, seed_base: int, epoch: int):
         """
@@ -236,7 +226,6 @@ def collate_fn(batch):
     # Each 'b' in batch is a numpy array or a torch array
     arrays = [torch.from_numpy(b[0]) if isinstance(b[0], np.ndarray) else b[0] for b in batch]
     audio_data = torch.stack(arrays, dim=0).long()
-    midi_onsets = [x[4] for x in batch]
 
 
     midi_arrays = [torch.from_numpy(b[1]) if isinstance(b[1], np.ndarray) else b[1] for b in batch]
@@ -245,85 +234,18 @@ def collate_fn(batch):
     midi_seq = [
         F.pad(x, (0, 0, 0, max_len - len(x)), "constant", PAD) for x in midi_arrays
     ]
-    
+    if max_len > MAX_SEQ_LEN:
+        midi_seq = [x[:MAX_SEQ_LEN] for x in midi_seq]
     midi_data = torch.stack(midi_seq, 0).long()
     
-    midi_index = transform_inputs(midi_data[..., 0], SEG_RES).long() + 1
-    onsets = torch.LongTensor([midi_index[i, idx] for i, idx in enumerate(midi_onsets)])
-
+    midi_index = transform_inputs(midi_data[..., 0], SEG_RES).long()
     midi_index[midi_data[..., 0] == PAD] = IDX_PAD
     midi_index = F.pad(midi_index[:, :-1], (1, 0), "constant", 0)
     
-    x = torch.arange(len(audio_data[0]) + 3).long().unsqueeze(0) + 1
+    x = torch.arange(len(audio_data[0]) + 3).long().unsqueeze(0)
+    
+    # audio_index = torch.stack([F.pad(x, (i + 1, 3 - i), "constant", 0) for i in range(4)], -1)
     audio_index = F.pad(x, (1, 0), "constant", 0)
-    onsets = onsets.unsqueeze(1)
-    # print(audio_index.shape, onsets.shape, midi_data.shape)
-    audio_index = audio_index + onsets - 1
-    audio_index[:, -3:] = IDX_PAD
     
     audio_tasks = [b[2] for b in batch]
     midi_tasks = [b[3] for b in batch]
-
-    if midi_data.shape[1] > MAX_SEQ_LEN:
-        midi_data = midi_data[:, :MAX_SEQ_LEN]
-        midi_index = midi_index[:, :MAX_SEQ_LEN]
-    # print("--------------------------------------------")
-    # print(midi_onsets)
-    # print(onsets)
-    
-    # print(midi_index)
-    # print(audio_index)
-    
-    return {
-        "AudioLM": {
-                "args": {
-                    "input_ids": audio_data,
-                    
-                },
-                "tasks": audio_tasks,
-                "indices": audio_index
-            },
-        "MIDILM": {
-                "args": {
-                    "input_ids": midi_data,
-                   
-                },
-                "tasks": midi_tasks,
-                "indices": midi_index
-            }
-        }
-            
-
-def test_save_sample():
-    """
-    Test function:
-      - Loads one sample from the dataset.
-      - Saves the MIDI segment (decoded) into a MIDI file.
-      - Saves the audio segment (using RVQ tokens) into a WAV file.
-    """
-    # from shoelace.utils.encodec_utils import save_rvq
-    # from shoelace.datasets.utils import decode
-    from torch.utils.data import DataLoader
-
-    # Adjust these parameters as needed
-    duration = 10.24  # seconds
-    path_folder = "data/formatted/slakh2100"  # root folder containing pop909/text & pop909/feature_5_tasks
-    rid = 0
-    validation = False
-
-    # Instantiate dataset and dataloader (batch size 1 for testing)
-    dataset = ShoelaceDataset(duration=duration, path_folder=path_folder, 
-                            rid=rid, task_type="multi-track",
-                              validation=validation, vocals_only=False)
-    dataset.reset_random_seed(5, 0)
-    loader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, worker_init_fn=worker_init_fn)
-
-    # Get one batch
-    for i in range(3):
-        batch = next(iter(loader))
-    
-    
-    
-
-if __name__ == "__main__":
-    test_save_sample()

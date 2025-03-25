@@ -291,17 +291,15 @@ class MIDILM(nn.Module):
         
         if x is None:
             midi_index = torch.zeros([batch_size, 2]).to(device).long()
-            midi_index[:, 1] = 1
             cur_timing = 0
             x = (torch.zeros([batch_size, 1, 6]).to(device) + PAD).long()
             x[:, :, 0] = SEG_RES
-            
         else:
-            midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device) + 1
+            midi_index = transform_inputs(x[..., 0], SEG_RES).long().to(device)
             midi_index = F.pad(midi_index, (1, 0), "constant", 0)
             cur_timing = ((x[0, :, 0] == SEG_RES).sum() -1) if x is not None else 0
- 
-        
+            
+
         prompt = x
         assert cur_timing < max_len
         seg_complete = False
@@ -328,17 +326,17 @@ class MIDILM(nn.Module):
                 decoded_sequence.append(next_token[:, None])
                 prompt = next_token[:, None]
 
-                if next_token[:, 0] < SEG_RES:
-                    midi_index = (next_token[:, :1]+ index_cursor*SEG_RES).long() + 1
+                if next_token[0, 0] < RES_EVENT:
+                    midi_index = (next_token[:, :1] + index_cursor*SEG_RES).long()
                 else:
-                    midi_index = (torch.zeros_like(next_token[:, :1]) + index_cursor*SEG_RES).long()+ 1
+                    midi_index = (torch.zeros_like(next_token[:, :1]) + index_cursor*SEG_RES).long()
 
                 if next_token[0, 0] == SEG_RES:
                     seg_complete = True
                     index_cursor = index_cursor + 1
                 if last_chunk:
                     break
- 
+
         yield {
             "output" : torch.concat([x] + decoded_sequence[1:], 1)
         }

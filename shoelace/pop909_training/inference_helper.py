@@ -92,7 +92,7 @@ class InferenceHelper:
         chunk_len = chunk_frame // SEG_RES
         hop_len = hop_frame // SEG_RES
         
-        prefix_len = chunk_len - 2
+        
         offset = 0
         window_len = chunk_len
         results = []
@@ -118,6 +118,7 @@ class InferenceHelper:
             else:
                 prefix, midi_prompt = cut_midi(midi_codes.squeeze(0), hop_len, window_len - 1)
                 results.append(prefix)
+                offset = offset + hop_frame
             refs.append(input_ids[:, :hop_len])
 
             n_id += 1

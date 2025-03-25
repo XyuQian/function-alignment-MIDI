@@ -44,8 +44,8 @@ def create_mask(batch_size: int,
         base_mask = base_mask + float('-inf')
     else:
         base_mask[padding] = float('-inf')
-        # random_mask = torch.rand_like(base_mask).to(base_mask.device)
-        # base_mask[random_mask < mask_ratio] = float('-inf')
+        random_mask = torch.rand_like(base_mask).to(base_mask.device)
+        base_mask[random_mask < mask_ratio] = float('-inf')
     
     base_mask = F.pad(base_mask, (n_prompts, 0), "constant", 0)
     
