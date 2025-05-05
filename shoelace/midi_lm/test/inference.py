@@ -14,12 +14,13 @@ SEQ_LEN = 1024
 def get_test_data():
     """Loads test MIDI data for inference."""
     paths = [
-        "data/POP909/909/909.mid",
-        "data/POP909/803/803.mid",
-        "data/POP909/860/860.mid",
-        "data/POP909/757/757.mid",
-        "data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA/MIDIs/f/f370a190b7901932cae04037e29ef6cf.mid",
-        "data/rwc/RM-P001.SMF_SYNC.MID"
+        # "data/POP909/909/909.mid",
+        # "data/POP909/803/803.mid",
+        # "data/POP909/860/860.mid",
+        # "data/POP909/757/757.mid",
+        # "data/Los-Angeles-MIDI-Dataset-Ver-4-0-CC-BY-NC-SA/MIDIs/f/f370a190b7901932cae04037e29ef6cf.mid",
+        # "data/rwc/RM-P001.SMF_SYNC.MID"
+        "raw/rwc/AIST.RWC-MDB-P-2001.SMF_SYNC/RM-P001.SMF_SYNC.MID",
     ]
     sequences = []
 
@@ -122,6 +123,9 @@ def run_inference(model_path, output_folder):
 
     generated_seq = model.inference(input_seq[:, :128], max_len=SEQ_LEN, top_k=16, temperature=1.0)
 
+    print(f"Input sequence shape: {input_seq.shape}")
+    print(f"Generated sequence shape: {generated_seq.shape}")
+
     # for i in range(20):
     #     print(generated_seq[0, i + 124])
     #     print(input_seq[0, i + 124])
@@ -134,6 +138,7 @@ def run_inference(model_path, output_folder):
 if __name__ == "__main__":
     output_folder = "test_results/test"
     os.makedirs(output_folder, exist_ok=True)
-    model_id = sys.argv[1]
-    model_path = f"exp/midi_lm_continue_phase_1/latest_{model_id}.pth"
+    # model_id = sys.argv[1]
+    model_id = 9000
+    model_path = f"exp/midi_lm_continue_phase_1/latest_1_{model_id}.pth"
     run_inference(model_path, output_folder)

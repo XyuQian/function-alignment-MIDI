@@ -287,7 +287,7 @@ def test_save_sample():
 
     # Instantiate dataset and dataloader (batch size 1 for testing)
     dataset = ShoelaceDataset(duration=duration, path_folder=path_folder, rid=rid,
-                              validation=validation, vocals_only=False)
+                              task_type="full", validation=validation, vocals_only=False)
     dataset.reset_random_seed(5, 0)
     loader = DataLoader(dataset, batch_size=1, collate_fn=collate_fn, worker_init_fn=worker_init_fn)
 

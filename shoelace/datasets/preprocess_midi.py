@@ -2,6 +2,7 @@ import pretty_midi
 import numpy as np
 import os
 import sys
+import glob
 import h5py
 
 from shoelace.midi_lm.models.config import SEG_RES, RES_EVENT
@@ -131,9 +132,35 @@ def extract_feature(file_path_lst: str, output_feature_path: str) -> None:
 
 
 if __name__ == "__main__":
-    fid = sys.argv[1]
-    file_path_lst = f"data/formatted/las/dur_lt_30_text/{fid}.lst"
-    output_feature_folder = "data/formatted/las/midis"
-    os.makedirs(output_feature_folder, exist_ok=True)
-    output_feature_path = os.path.join(output_feature_folder, f"{fid}.h5")
-    extract_feature(file_path_lst, output_feature_path)
+    # fid = sys.argv[1]
+    # file_path_lst = f"data/formatted/las/dur_lt_30_text/{fid}.lst"
+
+    # Training
+    print("====== Preprocessing training data ======")
+    for mode in ["Score", "Performance"]:
+        output_feature_folder = f"data/formatted/ASAP/{mode}/feature"
+        os.makedirs(output_feature_folder, exist_ok=True)
+
+        file_path_lst = f"data/formatted/ASAP/{mode}/text/{mode.lower()}_midis.lst"
+        output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_midis.h5")
+        extract_feature(file_path_lst, output_feature_path)
+    
+    # Validation
+    print("====== Preprocessing validation data ======")
+    for mode in ["Score", "Performance"]:
+        output_feature_folder = f"data/formatted/ASAP/{mode}/feature_eval"
+        os.makedirs(output_feature_folder, exist_ok=True)
+
+        file_path_lst = f"data/formatted/ASAP/{mode}/text_eval/{mode.lower()}_eval_midis.lst"
+        output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_eval_midis.h5")
+        extract_feature(file_path_lst, output_feature_path)
+
+    # output_feature_folder = f"data/formatted/ASAP/Score/feature"
+    # output_feature_folder = f"data/formatted/ASAP/Performance/feature"
+    # os.makedirs(output_feature_folder, exist_ok=True)
+
+    # file_path_lst ="data/formatted/ASAP/Score/text/score_midis.lst"
+    # file_path_lst ="data/formatted/ASAP/Performance/text/perf_midis.lst"
+
+    # output_feature_path = os.path.join(output_feature_folder, "perf_midis.h5")
+    # extract_feature(file_path_lst, output_feature_path)

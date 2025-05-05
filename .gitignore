@@ -1,8 +1,10 @@
 *__pycache__/
 *.pyc
 data
+raw
 *.npy
 save_models/
 exp/
 test_results/
+inference_results/
 logs/

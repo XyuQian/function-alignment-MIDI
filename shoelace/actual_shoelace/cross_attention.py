@@ -79,6 +79,9 @@ class LowRankMultiheadAttention(nn.Module):
             task : i for i, task in enumerate(tasks)
         }
 
+        self.vanilla_attn_output = None
+        self.last_attn_output = None
+
     def forward(self, pe, hidden_a, hidden_b, indices_a, indices_b, tasks, attn_mask):
         vanilla_attn_output = hidden_a["attn_output"]
         
@@ -104,6 +107,9 @@ class LowRankMultiheadAttention(nn.Module):
         q_pos = self.q_pos_linear(pe[indices_a])
         q = q + rearrange(q_pos, "b t (h d) -> b h t d", h=self.num_heads)
         attn_output = self.compute_attention(q, key, value, attn_mask)
+
+        self.vanilla_attn_output = vanilla_attn_output
+        self.last_attn_output = attn_output
 
         return attn_output * self.gates + vanilla_attn_output
 

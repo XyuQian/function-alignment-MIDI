@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from shoelace.utils.network_utils import sample
 # from torch.nn import TransformerEncoder, TransformerEncoderLayer
-from .transformer_encoder import TransformerEncoder, TransformerEncoderLayer
+from shoelace.midi_lm.models.transformer_encoder import TransformerEncoder, TransformerEncoderLayer
 from shoelace.midi_lm.models.config import PAD, SOS, N_ONSET, \
     N_INSTRUMENT, N_PITCH, N_DUR_X, N_DUR_Y, N_VELOCITY, SEG_RES, RES_EVENT
 from shoelace.utils.network_utils import transform_inputs
@@ -258,7 +258,7 @@ class MIDILM(nn.Module):
         - "input_embedding." for input_embedding.
         """
         # Load the checkpoint on CPU.
-        state_dict = torch.load(path, map_location="cpu")
+        state_dict = torch.load(path, map_location="cpu", weights_only=True)
         
         # Extract and load baby_llm weights.
         baby_llm_state = {k[len("baby_llm."):]: v for k, v in state_dict.items() if k.startswith("baby_llm.")}
@@ -385,4 +385,4 @@ if __name__ == "__main__":
     tgt[0, -4:] = PAD
     loss = midi_lm(tgt)
 
-    print("MIDILM Loss:", loss.item())  # Should return a loss value
+    print("MIDILM Loss:", next(loss).item())  # Should return a loss value

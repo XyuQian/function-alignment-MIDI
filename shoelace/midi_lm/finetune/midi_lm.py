@@ -58,8 +58,9 @@ class MIDILMLora(nn.Module):
             lora_dropout=0.02,
         )
         self.lm = get_peft_model(midi_lm, lora_config)
-        freeze(self.lm.baby_llm, False)
-        print_params(self)
+        freeze(self.lm, True)
+        # freeze(self.lm.baby_llm, False)
+        # print_params(self)
 
 
     def set_use_generator(self, flag: bool):
