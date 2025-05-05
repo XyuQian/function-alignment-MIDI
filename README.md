@@ -1,5 +1,5 @@
 # function-alignment-MIDI
 
-Modified version of function alignment between Audio and MIDI
+## Modified version of function alignment between Audio and MIDI
 
-This version is used for Score and Performance MIDI
+## This version is used for Score and Performance MIDI
