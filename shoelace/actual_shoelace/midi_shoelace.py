@@ -7,7 +7,7 @@ from shoelace.actual_shoelace.config import IDX_PAD
 from shoelace.utils.network_utils import print_params
 from shoelace.actual_shoelace.task_config import TASKS, MODEL_MAPPING
 from shoelace.actual_shoelace.cross_attention import SholaceParam
-from midi_config import MODEL_FACTORY, TASKS, MODEL_MAPPING
+from midi_config import MODEL_FACTORY, MASK_TYPE, TASKS, MODEL_MAPPING
 
 
 def create_mask(batch_size: int, 
@@ -16,7 +16,7 @@ def create_mask(batch_size: int,
             a_len: int, b_len: int,
             n_prompts: int,
             mask_type: bool, 
-            mask_ratio: float = 0.7) -> (torch.Tensor, torch.Tensor):
+            mask_ratio: float = 0.0) -> (torch.Tensor, torch.Tensor):
     """
     Create causal-like masks for cross attention between two sequences.
 
@@ -88,10 +88,6 @@ class Shoelace(nn.Module):
             # --- Adapter Initialization ---
             cond_model_name = config["cond_model_name"]
             print(f"Initializing adapter for {model_name} conditioned on {cond_model_name}")
-
-            # Ensure conditioning model config is available
-            if cond_model_name not in model_configs:
-                raise ValueError(f"Conditioning model '{cond_model_name}' not found in model_configs for {model_name}")
 
             cond_config = model_configs[cond_model_name]
 
@@ -232,14 +228,7 @@ class Shoelace(nn.Module):
             for model_name, config in self.model_dict.items():
                 # Only process models involved in active adaptation
                 if i % config["layer_skip"] == 0:
-                    try:
-                        # The generator yields the hidden state *before* adapter input is applied
-                        hiddens[model_name] = next(gen_dict[model_name])
-                    except StopIteration:
-                        print(f"Warning: Generator for {model_name} stopped unexpectedly at layer {i}.")
-                        # Handle case where generator finishes early if necessary
-                        hiddens[model_name] = None # Mark as finished
-
+                    hiddens[model_name] = next(gen_dict[model_name])
 
             # 2. Compute adapter outputs for the active direction
             for model_name, config in self.model_dict.items():
@@ -252,6 +241,9 @@ class Shoelace(nn.Module):
 
                     indices_a = args[model_name]["indices"]
                     indices_b = args[cond_model_name]["indices"]
+
+                    # for k, v in hidden_a[0].items():
+                    #     print(f"Layer {i}, Hidden state {k} for {model_name}: {v.shape}")
 
                     # Create mask: model_name (A) attends to cond_model_name (B)
                     # Masking is enabled when active_adapters[model_name] is True
@@ -318,6 +310,14 @@ class Shoelace(nn.Module):
         layer_skip = model_info["layer_skip"]
         n_layers = model_info["n_layers"]
 
+        # --- Direct Generation ---
+        model.reset_cache() # Reset cache of the generating model
+        model.set_use_generator(use_generator) # Ensure generator mode for inference
+        model_gen = model.inference(max_len=max_len, **kwargs)
+        if not use_generator:
+            print(f"Inference is not in generator mode. Directly generate sequence with model {model_name}.")
+            return model_gen
+
         cond_model_name = model_info["cond_model_name"]
         cond_model_info = self.model_dict[cond_model_name]
         cond_model = cond_model_info["model_obj"]
@@ -330,27 +330,24 @@ class Shoelace(nn.Module):
         if reset_cond_cache:
             print(f"Resetting cache and running conditioning model: {cond_model_name}")
             cond_model.reset_cache()
-            cond_model.set_use_generator(False) # Run in non-generator mode to populate cache
+            # cond_model.set_use_generator(False) # Run in non-generator mode to populate cache
             # cond_gen = cond_model.inference(max_len=max_len, **kwargs)
             # for out in cond_gen:
             #     if "output" in out:
             #         break
             # print(f"Conditioning model inference result: {cond_gen.shape}")
-            print(f"Conditioning model cache populated.")
+            # print(f"Conditioning model cache populated.")
         else:
              print(f"Using existing cache for conditioning model: {cond_model_name}")
 
         cond_model_cache = cond_model.get_cache()
-        # hidden_b = cond_model_cache[0] # Get the first layer's hidden state
-        # print("Conditioning model cache shape:", hidden_b["query"].shape)
-        
-        # --- Generation ---
-        model.reset_cache() # Reset cache of the generating model
-        model.set_use_generator(use_generator) # Ensure generator mode for inference
-        model_gen = model.inference(max_len=max_len, **kwargs)
-        if not use_generator:
-            print(f"Inference is not in generator mode. Directly generate sequence with model {model_name}.")
-            return model_gen
+        # if cond_model_cache is not None:
+        #     print(f"Conditioning model {cond_model_name} cache length: {len(cond_model_cache)}")
+        #     for i in range(len(cond_model_cache)):
+        #         if cond_model_cache[i] is not None:
+        #             for k, v in cond_model_cache[i].items():
+        #                 print(f"Conditioning model {cond_model_name} cache {i}, {k} shape: {v.shape}")
+
         
         print(f"====== Starting Inference: {model_name} is generating conditioned on {cond_model_name} =====")
 
@@ -377,6 +374,7 @@ class Shoelace(nn.Module):
                         tasks=tasks,
                         attn_mask=None
                     )
+                    # assert torch.equal(hidden_a[0]["attn_output"], adapt_output) # Sanity check: self.gate = 0
                     hidden_a[0]["attn_output"] = adapt_output
             
         return main_indices["output"]
@@ -389,12 +387,11 @@ class Shoelace(nn.Module):
         return self.model_dict[model_name]["model"].decode(input_ids)
 
     def load_weights(self, model_folder):
-        """Loads adapter weights and optionally model weights."""
+        """Loads adapter weights and base model weights."""
         adapters_path = os.path.join(model_folder, "adapters.pth")
         if os.path.exists(adapters_path):
             print(f"Loading adapter weights from: {adapters_path}")
             state = torch.load(adapters_path, map_location=self.device, weights_only=True)
-            # Load adapter weights into self.adapters (ModuleDict)
             self.adapters.load_state_dict(state)
             print("Adapter weights loaded successfully.")
         else:
@@ -404,29 +401,32 @@ class Shoelace(nn.Module):
         # The original code had model.load_weights inside the loop,
         # which might be redundant if base models are pre-loaded during init.
         # Keep it if you save/load base models alongside adapters.
-        # for model_name, config in self.model_dict.items():
-        #     model_weights_folder = os.path.join(model_folder, model_name)
-        #     if os.path.exists(model_weights_folder):
-        #         print(f"Loading base model weights for {model_name} from {model_weights_folder}")
-        #         config["model"].load_weights(model_weights_folder)
-        #     else:
-        #         print(f"Warning: Base model weights folder not found for {model_name} at {model_weights_folder}")
+        for model_name, config in self.model_dict.items():
+            model_weights_folder = os.path.join(model_folder, model_name)
+            print(f"Loading {model_name} weights from {model_weights_folder}")
+            model = config["model_obj"]
+            model.load_weights(model_weights_folder)
+
+        print(f"Base model weights loaded successfully.")
 
 
     def save_weights(self, model_folder: str):
-        """Saves only the adapter parameters."""
+        """Saves both the adapter weights and updated base model weights."""
         os.makedirs(model_folder, exist_ok=True)
-        # Get state dict for adapters only
+        
         adapter_state = self.adapters.state_dict()
         adapters_path = os.path.join(model_folder, "adapters.pth")
         torch.save(adapter_state, adapters_path)
         print(f"Adapter weights saved to: {adapters_path}")
 
-        # Optionally save base model weights if needed
-        # for model_name, config in self.model_dict.items():
-        #     model_weights_folder = os.path.join(model_folder, model_name)
-        #     config["model"].save_weights(model_weights_folder)
-        # print(f"Base model weights saved in respective subfolders within: {model_folder}")
+        for model_name, config in self.model_dict.items():
+            model_weights_folder = os.path.join(model_folder, model_name)
+            model = config["model_obj"]
+            model.save_weights(model_weights_folder)
+            print(f"Base model weights saved to: {model_weights_folder}")
+        
+        print("All weights saved successfully.")
+            
 
 
 if __name__=="__main__":
@@ -440,19 +440,20 @@ if __name__=="__main__":
     # --- Instantiate Shoelace ---
     model = Shoelace(
         device=torch.device(device),
-        n_prompts=5, # Number of learnable prompts
+        n_prompts=5,
         model_configs=MODEL_FACTORY,
-        task_type="midi_conversion", # Matches the key in TASKS dict
-        mask_config={ # Enable potential conditioning in both directions
+        task_type="midi_conversion",
+        mask_config={ # Enable both directions are DANGEROUS!
             "ScoreLM": True,
-            "PerformanceLM": True
+            "PerformanceLM": False
         }
+        # mask_config=MASK_TYPE
     ).to(device)
     
-    score_seq = torch.zeros([16, 20, 6]).to(device).long()
-    perf_seq = torch.ones([16, 100, 6]).to(device).long()
-    score_indices = torch.ones([16, 20]).to(device).long()
-    perf_indices = torch.ones([16, 100]).to(device).long()
+    score_seq = torch.ones([1, 20, 6]).to(device).long()
+    perf_seq = torch.ones([1, 100, 6]).to(device).long()
+    score_indices = torch.ones([1, 20]).to(device).long()
+    perf_indices = torch.ones([1, 100]).to(device).long()
 
     batch = {
         "ScoreLM":
@@ -465,6 +466,24 @@ if __name__=="__main__":
              "tasks": ["generate_performance"]}
     }
 
+    # For sanity check
+    from shoelace.actual_shoelace.midi_train import get_sanity_dataset, move_to_device
+    dataset, dataloader = get_sanity_dataset(rid=0, batch_size=16, task_type="midi_conversion", modality="Score")
+    batch = move_to_device(next(iter(dataloader)), dev=device)
+
     out = model(batch)
     print(out)
 
+    # for i in range(10):
+    #     active_adapters = model.determine_active_adapters()
+    #     print(active_adapters)
+
+    
+    adapters = model.adapters
+    for name, adapter in adapters.items():
+        print(f"Adapter {name}:", adapter)
+    
+    score_lm = model.models["ScoreLM"]
+    perf_lm = model.models["PerformanceLM"]
+    print(f"ScoreLM: {score_lm}")
+    print(f"PerformanceLM: {perf_lm}")

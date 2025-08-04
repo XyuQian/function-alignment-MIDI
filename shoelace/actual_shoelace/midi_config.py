@@ -43,6 +43,21 @@ MODEL_FACTORY = {
     }
 }
 
+MASK_TYPE = {
+    "score_2_perf":{
+        "ScoreLM": False,
+        "PerformanceLM":True
+    },
+    "perf_2_score":{
+        "ScoreLM": True,
+        "PerformanceLM":False
+    },
+    "bi_di":{
+        "ScoreLM": True,
+        "PerformanceLM":True
+    }
+}
+
 TASKS = {
     "midi_conversion": {
         "perf_2_score": ["generate_score"], # Task ScoreLM performs when conditioned on PerformanceLM

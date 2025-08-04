@@ -173,6 +173,44 @@ class PairedMIDIDataset(Dataset):
         return score_seq, perf_seq, score_task, perf_task
 
 
+# Paired dataset with the same data for sanity check
+class PairedMIDIDatasetSanity(Dataset):
+    """
+    Dataset yielding tuples of the same sequence (x, x).
+    """
+    def __init__(self, path_folder: str, rid: int, task_type: str, 
+                 num_workers: int = 1, 
+                 use_loader: bool = True, 
+                 validation: bool = False,
+                 modality: str = "Score"):
+        """
+        Args:
+            path_folder (str): Path to the folder containing the dataset (text & feature).
+            rid (int): Unique rank ID or worker ID for seeding.
+            task_type (str): Type of task ("midi_conversion" only).
+            num_workers (int): Number of workers for data loading.
+        """
+        super().__init__()
+        self.score_ds = MIDIDataset(path_folder, modality, rid, num_workers, validation)
+        self.perf_ds  = MIDIDataset(path_folder, modality, rid, num_workers, validation)
+        self.length = len(self.score_ds)
+
+        self.rid = rid
+        self.use_loader = use_loader
+        self.task = TASKS[task_type]
+
+    def __len__(self):
+        return self.length
+
+    def __getitem__(self, idx):
+        score_seq = self.score_ds[idx]
+        perf_seq  = self.perf_ds[idx]
+        score_task = self.task["perf_2_score"]
+        perf_task  = self.task["score_2_perf"]
+        return score_seq, perf_seq, score_task, perf_task
+
+
+
 def worker_init_fn(worker_id: int):
     """
     Worker init function. Could set np.random.seed(...) if needed for each worker.
@@ -239,10 +277,10 @@ def test_samples():
     """
     Test the dataset by loading a few samples.
     """
-    dataset = PairedMIDIDataset(path_folder="data/formatted/ASAP", rid=0, 
+    dataset = PairedMIDIDatasetSanity(path_folder="data/formatted/ASAP", rid=0, 
                                 task_type="midi_conversion", num_workers=1)
     dataloader = DataLoader(dataset, batch_size=16, collate_fn=collate_fn,
-                            shuffle=False, num_workers=0, drop_last=True)
+                            shuffle=True, num_workers=1, drop_last=True)
 
     # batch = next(iter(dataloader))
     for i, batch in enumerate(dataloader):
@@ -252,6 +290,16 @@ def test_samples():
         score_indices = batch["ScoreLM"]["indices"]
         perf_indices = batch["PerformanceLM"]["indices"]
         # print(f"Score Indices Shape: {score_indices.shape}, Performance Indices Shape: {perf_indices.shape}")
+
+        score_tasks = batch["ScoreLM"]["tasks"]
+        perf_tasks = batch["PerformanceLM"]["tasks"]
+
+        assert torch.equal(score_data, perf_data), \
+            "Score and Performance data should be equal in the Sanity dataset."
+        assert torch.equal(score_indices, perf_indices), \
+            "Score and Performance indices should be equal in the Sanity dataset."
+        assert score_tasks == perf_tasks, \
+            f"Score and Performance tasks should be equal in the Sanity dataset, {score_tasks} != {perf_tasks}"
         # print(f"Max Score Indices: {score_indices.max()}, Max Performance Indices: {perf_indices.max()}")
         assert score_indices.max() < 10000
         assert perf_indices.max() < 10000

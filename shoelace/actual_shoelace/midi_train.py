@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 from shoelace.utils.trainer_utils import Trainer
 
 from tqdm import tqdm
-from shoelace.actual_shoelace.midi_data_loader import PairedMIDIDataset
+from shoelace.actual_shoelace.midi_data_loader import PairedMIDIDataset, PairedMIDIDatasetSanity
 from shoelace.actual_shoelace.midi_data_loader import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.midi_shoelace import Shoelace
 from midi_config import MODEL_FACTORY, TASKS, MODEL_MAPPING
@@ -33,7 +33,33 @@ def get_dataset(rid, batch_size, task_type, validation=False):
         dataset,
         batch_size=batch_size,
         collate_fn=collate_fn,
-        shuffle=False,
+        shuffle=True,
+        num_workers=num_workers,
+        worker_init_fn=worker_init_fn,
+        pin_memory=True,
+        drop_last=True
+    )
+
+    return dataset, dataloader
+
+
+def get_sanity_dataset(rid, batch_size, task_type, modality, validation=False):
+    num_workers = 0
+    dataset = PairedMIDIDatasetSanity(
+        validation=validation,
+        path_folder="data/formatted/ASAP",
+        rid=rid,
+        task_type=task_type,
+        num_workers=num_workers,
+        modality=modality
+    )
+
+    # For single-GPU training, we simply use shuffle (for training) instead of a distributed sampler
+    dataloader = DataLoader(
+        dataset,
+        batch_size=batch_size,
+        collate_fn=collate_fn,
+        shuffle=True,
         num_workers=num_workers,
         worker_init_fn=worker_init_fn,
         pin_memory=True,
@@ -81,9 +107,9 @@ def evaluate(model, dataloader, e, i, device):
 
 
 @torch.no_grad()
-def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_loss):
+def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_loss, suffix):
     writer.add_scalar('train/mean_loss', mean_loss, step)
-    model.save_weights(os.path.join(model_dir, f"latest_{e}_{i}"))
+    model.save_weights(os.path.join(model_dir, f"latest_{e}_{i}_{suffix}"))
     if eval_loss < min_loss:
         min_loss = eval_loss
         model.save_weights(os.path.join(model_dir, f"best"))
@@ -95,16 +121,16 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
     return min_loss
 
 
-def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, epochs):
+def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, epochs, suffix):
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.95)
+    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
     writer = SummaryWriter(model_dir, flush_secs=20)
 
     step = 0
     min_loss = float("inf")
 
     eval_loss = evaluate(model, val_dataloader, 0, step, device)
-    min_loss = save_model(model, writer, eval_loss, 0, model_dir, step, 0, 0, min_loss)
+    min_loss = save_model(model, writer, eval_loss, 0, model_dir, step, 0, 0, min_loss, suffix)
 
     for epoch in range(epochs):
         model.train()
@@ -140,11 +166,13 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
             writer.add_scalar("eval/loss", eval_loss, step)
             print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
         scheduler.step()
+    epoch += 1
+    eval_loss = evaluate(model, val_dataloader, epoch, "end", device)
+    writer.add_scalar("eval/loss", eval_loss, step)
+    print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
     
     print("Training complete.")
-
-    eval_loss = evaluate(model, val_dataloader, epoch, "end", device)
-    min_loss = save_model(model, writer, eval_loss, avg_loss / n_element, model_dir, step, epoch, "end", min_loss)
+    min_loss = save_model(model, writer, eval_loss, avg_loss / n_element, model_dir, step, epoch, "end", min_loss, suffix)
 
 
 if __name__ == "__main__":
@@ -159,19 +187,26 @@ if __name__ == "__main__":
 
     model = Shoelace(
         device=torch.device(device),
-        n_prompts=5, # Number of learnable prompts
+        n_prompts=5,
         model_configs=MODEL_FACTORY,
-        task_type="midi_conversion", # Matches the key in TASKS dict
-        mask_config={ # Enable potential conditioning in both directions
+        task_type="midi_conversion",
+        mask_config={
             "ScoreLM": True,
-            "PerformanceLM": True
+            "PerformanceLM": False
         }
     ).to(device)
 
     dataset, dataloader = get_dataset(rid=0, batch_size=16, task_type="midi_conversion")
     _, val_dataloader = get_dataset(rid=0, batch_size=16, task_type="midi_conversion", validation=True)
 
-    train(model, dataloader, val_dataloader, device, model_dir, learning_rate=1e-4, epochs=100)
+    # For sanity check
+    # dataset, dataloader = get_sanity_dataset(rid=0, batch_size=12, task_type="midi_conversion", modality="Score")
+    # _, val_dataloader = get_sanity_dataset(rid=0, batch_size=12, task_type="midi_conversion", modality="Score", validation=True)
+
+    # dataset, dataloader = get_sanity_dataset(rid=0, batch_size=16, task_type="midi_conversion", modality="Performance")
+    # _, val_dataloader = get_sanity_dataset(rid=0, batch_size=16, task_type="midi_conversion", modality="Performance", validation=True)
+
+    train(model, dataloader, val_dataloader, device, model_dir, learning_rate=5e-5, epochs=50, suffix="perf_2_score")
 
     # for name, param in model.named_parameters():
     #     if param.requires_grad:
