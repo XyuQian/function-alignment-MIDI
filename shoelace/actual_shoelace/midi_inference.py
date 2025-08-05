@@ -104,11 +104,11 @@ class InferenceHelper:
         from shoelace.actual_shoelace.midi_shoelace import Shoelace as Model
         from shoelace.actual_shoelace.midi_config import MODEL_FACTORY
         self.model = Model(
-            mask_config=mask_config, 
             device=device, 
+            n_prompts=n_prompts,
             model_configs=MODEL_FACTORY, 
             task_type=task_type,
-            n_prompts=n_prompts
+            mask_config=mask_config
         )
         self.model.load_weights(model_folder)
         self.model.eval().to(device)
@@ -408,7 +408,7 @@ class InferenceHelper:
 
 if __name__=="__main__":
     inference_helper_score2perf = InferenceHelper(
-        model_folder="exp/midi_conversion/latest_50_end_score_2_perf", 
+        model_folder="exp/midi_conversion/latest_100_end_score_2_perf", 
         device=torch.device("cuda"),
         n_prompts=5,
         task_type="midi_conversion",
@@ -419,7 +419,7 @@ if __name__=="__main__":
     )
     
     inference_helper_perf2score = InferenceHelper(
-        model_folder="exp/midi_conversion/latest_50_end_perf_2_score",
+        model_folder="exp/midi_conversion/latest_100_end_perf_2_score",
         device=torch.device("cuda"),
         n_prompts=5,
         task_type="midi_conversion",
@@ -431,7 +431,7 @@ if __name__=="__main__":
 
 
     # Example usage
-    fname = "001_001"
+    fname = "001_002"
     # fname = "2"
     # score_data_generator = get_midi_data(
     #     path=f"data/ASAP/ASAP_samples/Score/{fname}.mid", 
@@ -448,10 +448,10 @@ if __name__=="__main__":
 
     print(f"\n********** Score to Performance for {fname} ***********")
     perf_codes, score_gen = inference_helper_score2perf.score_2_perf(
-        midi_path=f"data/ASAP/ASAP_samples/Score/{fname}.mid",
+        midi_path=f"data/ASAP/Score/{fname}.mid",
         # midi_path=f"data/{fname}.midi",
         max_gen_len=128,
-        top_k=16, 
+        top_k=1, 
         tasks=['generate_score', 'generate_performance']
     )
     print(perf_codes.shape, score_gen.shape)
@@ -459,16 +459,16 @@ if __name__=="__main__":
 
     print(f"********** Performance to Score for {fname} ***********")
     score_codes, perf_gen = inference_helper_perf2score.perf_2_score(
-        midi_path=f"data/ASAP/ASAP_samples/Performance/{fname}.mid",
+        midi_path=f"data/ASAP/Performance/{fname}.mid",
         # midi_path=f"data/{fname}.midi",
         max_gen_len=128,
-        top_k=16, 
+        top_k=1, 
         tasks=['generate_performance', 'generate_score']
     )
     print(score_codes.shape, perf_gen.shape)
     print()
 
-    # decode(os.path.join("inference_results", f"sanity_{fname}_score_2_perf.mid"), perf_codes[0].cpu().numpy())
+    # decode(os.path.join("inference_results", f"sanity_{fname}_score.mid"), perf_codes[0].cpu().numpy())
     # decode(os.path.join("inference_results", f"sanity_{fname}_perf.mid"), score_codes[0].cpu().numpy())
 
     # decode(os.path.join("inference_results", f"sanity_{fname}_score_gen.mid"), score_gen[0].cpu().numpy())
@@ -482,18 +482,19 @@ if __name__=="__main__":
     # decode(os.path.join("inference_results", f"sanity_{fname}_perf_input.mid"), input_perf[0].cpu().numpy())
 
     # print(f"********** Direct generation for {fname} ***********")
-    # score_codes, _ = inference_helper.direct_gen(
-    #     midi_path=f"data/ASAP/ASAP_samples/Score/{fname}.mid",
+    # score_codes, _ = inference_helper_score2perf.direct_gen(
+    #     midi_path=f"data/ASAP/Score/{fname}.mid",
     #     max_gen_len=128,
-    #     top_k=16
+    #     top_k=1
     # )
 
-    # _, perf_codes = inference_helper.direct_gen(
-    #     midi_path=f"data/ASAP/ASAP_samples/Performance/{fname}.mid",
+    # _, perf_codes = inference_helper_perf2score.direct_gen(
+    #     midi_path=f"data/ASAP/Performance/{fname}.mid",
     #     max_gen_len=128,
-    #     top_k=16
+    #     top_k=1
     # )
-    # print(perf_codes.shape, score_codes.shape)
+    # print(score_codes.shape)
+    # print(perf_codes.shape)
 
     # decode(os.path.join("inference_results", f"direct_gen_{fname}_score.mid"), score_codes[0].cpu().numpy())
     # decode(os.path.join("inference_results", f"direct_gen_{fname}_perf.mid"), perf_codes[0].cpu().numpy())

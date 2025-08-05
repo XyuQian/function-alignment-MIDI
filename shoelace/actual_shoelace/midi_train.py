@@ -8,8 +8,8 @@ from torch.utils.data import DataLoader
 from shoelace.utils.trainer_utils import Trainer
 
 from tqdm import tqdm
-from shoelace.actual_shoelace.midi_data_loader import PairedMIDIDataset, PairedMIDIDatasetSanity
-from shoelace.actual_shoelace.midi_data_loader import collate_fn, worker_init_fn
+from shoelace.actual_shoelace.midi_data_loader_new import PairedMIDIDataset, PairedMIDIDatasetSanity
+from shoelace.actual_shoelace.midi_data_loader_new import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.midi_shoelace import Shoelace
 from midi_config import MODEL_FACTORY, TASKS, MODEL_MAPPING
 
@@ -19,7 +19,7 @@ os.environ["CUDA_LAUNCH_BLOCKING"] = "1"
 
 
 def get_dataset(rid, batch_size, task_type, validation=False):
-    num_workers = 0
+    num_workers = 4
     dataset = PairedMIDIDataset(
         validation=validation,
         path_folder="data/formatted/ASAP",
@@ -194,20 +194,28 @@ if __name__ == "__main__":
             "ScoreLM": True,
             "PerformanceLM": False
         }
+        # mask_config={ # Config for Score to Performance
+        #     "ScoreLM": False,
+        #     "PerformanceLM": True
+        # }
     ).to(device)
 
-    dataset, dataloader = get_dataset(rid=0, batch_size=16, task_type="midi_conversion")
-    _, val_dataloader = get_dataset(rid=0, batch_size=16, task_type="midi_conversion", validation=True)
+    dataset, dataloader = get_dataset(rid=0, batch_size=8, task_type="midi_conversion")
+    _, val_dataloader = get_dataset(rid=0, batch_size=8, task_type="midi_conversion", validation=True)
 
     # For sanity check
-    # dataset, dataloader = get_sanity_dataset(rid=0, batch_size=12, task_type="midi_conversion", modality="Score")
-    # _, val_dataloader = get_sanity_dataset(rid=0, batch_size=12, task_type="midi_conversion", modality="Score", validation=True)
+    # dataset, dataloader = get_sanity_dataset(rid=0, batch_size=8, task_type="midi_conversion", modality="Score")
+    # _, val_dataloader = get_sanity_dataset(rid=0, batch_size=8, task_type="midi_conversion", modality="Score", validation=True)
 
     # dataset, dataloader = get_sanity_dataset(rid=0, batch_size=16, task_type="midi_conversion", modality="Performance")
     # _, val_dataloader = get_sanity_dataset(rid=0, batch_size=16, task_type="midi_conversion", modality="Performance", validation=True)
 
-    train(model, dataloader, val_dataloader, device, model_dir, learning_rate=5e-5, epochs=50, suffix="perf_2_score")
+    # train(model, dataloader, val_dataloader, device, model_dir, learning_rate=1e-4, epochs=30, suffix="score")
+    # train(model, dataloader, val_dataloader, device, model_dir, learning_rate=1e-4, epochs=50, suffix="performance")
+
+    # train(model, dataloader, val_dataloader, device, model_dir, learning_rate=1e-4, epochs=100, suffix="score_2_perf")
+    train(model, dataloader, val_dataloader, device, model_dir, learning_rate=1e-4, epochs=100, suffix="perf_2_score")
 
     # for name, param in model.named_parameters():
     #     if param.requires_grad:
-    #         print(f"{name}: {param.size()}, requires_grad={param.requires_grad}")
+    #         print(f"{name}: {param.size()}")

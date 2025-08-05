@@ -135,25 +135,36 @@ if __name__ == "__main__":
     # fid = sys.argv[1]
     # file_path_lst = f"data/formatted/las/dur_lt_30_text/{fid}.lst"
 
-    # Training
-    print("====== Preprocessing training data ======")
-    for mode in ["Score", "Performance"]:
-        output_feature_folder = f"data/formatted/ASAP/{mode}/feature"
-        os.makedirs(output_feature_folder, exist_ok=True)
+    for data_type in ['Score', 'Performance']:
+        for mode in ['train', 'val', 'test']:
+            print(f"====== Preprocessing {data_type} {mode} data ======")
 
-        file_path_lst = f"data/formatted/ASAP/{mode}/text/{mode.lower()}_midis.lst"
-        output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_midis.h5")
-        extract_feature(file_path_lst, output_feature_path)
+            base_path = f"data/formatted/ASAP/{data_type}"
+            input_file_folder = os.path.join(base_path, "text", mode)
+            output_feature_folder = os.path.join(base_path, "feature", mode)
+            os.makedirs(output_feature_folder, exist_ok=True)
+            
+            file_lst_path = os.path.join(input_file_folder, f"{data_type.lower()}_midis.lst")
+            output_feature_path = os.path.join(output_feature_folder, f"{data_type.lower()}_midis.h5")
+            extract_feature(file_lst_path, output_feature_path)
+
+    # print("====== Preprocessing training data ======")
+    # for mode in ["Score", "Performance"]:
+    #     output_feature_folder = f"data/formatted/ASAP/{mode}/feature"
+    #     os.makedirs(output_feature_folder, exist_ok=True)
+
+    #     file_path_lst = f"data/formatted/ASAP/{mode}/text/{mode.lower()}_midis.lst"
+    #     output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_midis.h5")
+    #     extract_feature(file_path_lst, output_feature_path)
     
-    # Validation
-    print("====== Preprocessing validation data ======")
-    for mode in ["Score", "Performance"]:
-        output_feature_folder = f"data/formatted/ASAP/{mode}/feature_eval"
-        os.makedirs(output_feature_folder, exist_ok=True)
+    # print("====== Preprocessing validation data ======")
+    # for mode in ["Score", "Performance"]:
+    #     output_feature_folder = f"data/formatted/ASAP/{mode}/feature_eval"
+    #     os.makedirs(output_feature_folder, exist_ok=True)
 
-        file_path_lst = f"data/formatted/ASAP/{mode}/text_eval/{mode.lower()}_eval_midis.lst"
-        output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_eval_midis.h5")
-        extract_feature(file_path_lst, output_feature_path)
+    #     file_path_lst = f"data/formatted/ASAP/{mode}/text_eval/{mode.lower()}_eval_midis.lst"
+    #     output_feature_path = os.path.join(output_feature_folder, f"{mode.lower()}_eval_midis.h5")
+    #     extract_feature(file_path_lst, output_feature_path)
 
     # output_feature_folder = f"data/formatted/ASAP/Score/feature"
     # output_feature_folder = f"data/formatted/ASAP/Performance/feature"

@@ -23,8 +23,11 @@ def load_data_lst(path_folder, modality, validation):
     list_folder = os.path.join(path_folder, modality, "text")
     feature_folder = os.path.join(path_folder, modality, "feature")
     if validation:
-        list_folder = list_folder + "_eval"
-        feature_folder = feature_folder + "_eval"
+        list_folder = os.path.join(list_folder, "val")
+        feature_folder = os.path.join(feature_folder, "val")
+    else:
+        list_folder = os.path.join(list_folder, "train")
+        feature_folder = os.path.join(feature_folder, "train")
     files, feature_paths = [], []
 
     for f in os.listdir(list_folder):
@@ -55,18 +58,20 @@ class MIDIDataset(Dataset):
         self.files, self.feature_paths = load_data_lst(path_folder, modality=modality, validation=validation)
         num_workers = max(1, num_workers)  # Ensure at least one worker
 
-        self.index = {str(i): [] for i in range(num_workers)}
+        self.index_map = {str(i): [] for i in range(num_workers)}
         self.tlen = [[] for _ in range(len(self.feature_paths))]
 
-        self._prepare_dataset(num_workers, step=1 if not validation else 2)
+        self._prepare_dataset(num_workers)
         self.data = [None for _ in self.feature_paths]
 
         self.total_files = sum(len(f) for f in self.files)
+        self.total_segments = sum(len(self.index_map[k]) for k in self.index_map)
+
         print(f"Number of {modality} MIDI files:", self.total_files)
-        print("Number of segments:", len(self.index[str(0)]))
+        print("Number of segments:", self.total_segments)
 
     
-    def _prepare_dataset(self, num_workers, step):
+    def _prepare_dataset(self, num_workers):
         """Prepare dataset by reading feature files and indexing sequences."""
         for i, data_path in enumerate(self.feature_paths):
             with h5py.File(data_path, "r") as hf:
@@ -88,15 +93,13 @@ class MIDIDataset(Dataset):
 
                     for s, sid in enumerate(sos_indices[:-1]):
                         # print(s, sid)
-                        if s % step != 0:
-                            continue
 
                         # Determine corresponding rest segment indices safely
                         res_st = res_sos_indices[s] if s < len(res_sos_indices) else -1
                         res_ed = res_sos_indices[s + 1] if s + 1 < len(res_sos_indices) else -1
 
-                        self.index[str(i % num_workers)].append([i, j, sid, res_st, res_ed])
-                        if self.tlen[i][j] - sid < MAX_SEQ_LEN // 2:
+                        self.index_map[str(i % num_workers)].append([i, j, sid, res_st, res_ed])
+                        if self.tlen[i][j] - sid < MAX_SEQ_LEN:
                             break
 
         self.f_len = sum(len(f) for f in self.files)
@@ -132,13 +135,13 @@ class MIDIDataset(Dataset):
     
     def __getitem__(self, idx):
         worker_id = get_worker_info().id if self.use_loader else 0
-        tid, fid, sid, res_st, res_ed = self.index[str(worker_id)][idx % len(self.index[str(worker_id)])]
+        tid, fid, sid, res_st, res_ed = self.index_map[str(worker_id)][idx % len(self.index_map[str(worker_id)])]
         return self._load_cache(tid, fid, sid, res_st, res_ed)
 
 
 class PairedMIDIDataset(Dataset):
     """
-    Dataset yielding tuples of (score_sequence, performance_sequence) with equal length.
+    Dataset yielding tuples of (score_sequence, performance_sequence) with similar length.
     """
     def __init__(self, path_folder: str, rid: int, task_type: str, 
                  num_workers: int = 1, 
@@ -277,13 +280,19 @@ def test_samples():
     """
     Test the dataset by loading a few samples.
     """
-    dataset = PairedMIDIDatasetSanity(path_folder="data/formatted/ASAP", rid=0, 
-                                task_type="midi_conversion", num_workers=1)
+    # dataset = PairedMIDIDatasetSanity(path_folder="data/formatted/ASAP", rid=0, 
+    #                             task_type="midi_conversion", num_workers=0, modality="Score")
+    # dataset = PairedMIDIDatasetSanity(path_folder="data/formatted/ASAP", rid=0, 
+    #                             task_type="midi_conversion", num_workers=0, modality="Performance")
+    dataset = PairedMIDIDataset(path_folder="data/formatted/ASAP", rid=0, 
+                                task_type="midi_conversion", num_workers=1, validation=True)
     dataloader = DataLoader(dataset, batch_size=16, collate_fn=collate_fn,
                             shuffle=True, num_workers=1, drop_last=True)
 
     # batch = next(iter(dataloader))
     for i, batch in enumerate(dataloader):
+        if i > 20:
+            break
         score_data = batch["ScoreLM"]["args"]["input_ids"]
         perf_data = batch["PerformanceLM"]["args"]["input_ids"]
         print(f"Score Data Shape: {score_data.shape}, Performance Data Shape: {perf_data.shape}")
@@ -294,12 +303,15 @@ def test_samples():
         score_tasks = batch["ScoreLM"]["tasks"]
         perf_tasks = batch["PerformanceLM"]["tasks"]
 
-        assert torch.equal(score_data, perf_data), \
-            "Score and Performance data should be equal in the Sanity dataset."
-        assert torch.equal(score_indices, perf_indices), \
-            "Score and Performance indices should be equal in the Sanity dataset."
-        assert score_tasks == perf_tasks, \
-            f"Score and Performance tasks should be equal in the Sanity dataset, {score_tasks} != {perf_tasks}"
+        # score_seq = decode(os.path.join("test_results", f"score_{i}.mid"), score_data[0].numpy())
+        # perf_seq = decode(os.path.join("test_results", f"perf_{i}.mid"), perf_data[0].numpy())
+
+        # assert torch.equal(score_data, perf_data), \
+        #     "Score and Performance data should be equal in the Sanity dataset."
+        # assert torch.equal(score_indices, perf_indices), \
+        #     "Score and Performance indices should be equal in the Sanity dataset."
+        # assert score_tasks == perf_tasks, \
+        #     f"Score and Performance tasks should be equal in the Sanity dataset, {score_tasks} != {perf_tasks}"
         # print(f"Max Score Indices: {score_indices.max()}, Max Performance Indices: {perf_indices.max()}")
         assert score_indices.max() < 10000
         assert perf_indices.max() < 10000

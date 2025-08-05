@@ -6,13 +6,14 @@ import numpy as np
 import pretty_midi
 import bisect
 
-def prepare_asap_dataset(path, output_path):
+def prepare_asap_dataset(path, output_path, segment_length=32):
     df = pd.read_csv(os.path.join(path, 'metadata.csv'))
 
     score_dir = os.path.join(output_path, 'Score')
     perf_dir = os.path.join(output_path, 'Performance')
     os.makedirs(score_dir, exist_ok=True)
     os.makedirs(perf_dir, exist_ok=True)
+    cnt = 0
 
     for idx, row in df.iterrows():
         idx = f"{idx + 1:03d}"
@@ -22,14 +23,20 @@ def prepare_asap_dataset(path, output_path):
         perf_annotation = os.path.join(path, row['performance_annotations'])
         score_path = os.path.join(path, row['midi_score'])
         perf_path = os.path.join(path, row['midi_performance'])
-        print(idx, composer, title)
+        print(f"Processing {idx} - {composer} - {title}")
 
         score_beats = get_beats(score_annotation)
         perf_beats = get_beats(perf_annotation)
-        # print(len(score_beats), len(perf_beats))
+        
+        # Segment the beats into n-beat segments
+        score_segments = find_segments(score_beats, segment_length)
+        perf_segments = find_segments(perf_beats, segment_length)
 
-        score_segments = find_segments(score_beats, 16)
-        perf_segments = find_segments(perf_beats, 16)
+        # if len(score_segments) < 5 or len(perf_segments) < 5:
+        #     print(idx, composer, title)
+        #     print(f"Score beats: {len(score_beats)}, Performance beats: {len(perf_beats)}")
+        #     print(f"Score segments: {len(score_segments)}, Performance segments: {len(perf_segments)}")
+        #     cnt += 1
         
         score_midi_list = segment_midi(score_path, score_segments, mode='score')
         perf_midi_list = segment_midi(perf_path, perf_segments, mode='performance')
@@ -38,6 +45,7 @@ def prepare_asap_dataset(path, output_path):
         for i, (score_midi, perf_midi) in enumerate(zip(score_midi_list, perf_midi_list)):
             score_midi.write(os.path.join(score_dir, f"{idx}_{i+1:03d}.mid"))
             perf_midi.write(os.path.join(perf_dir, f"{idx}_{i+1:03d}.mid"))
+    # print(f"Total files less than 5 segments: {cnt}")
 
 
 def get_beats(annotation_path):
@@ -54,10 +62,16 @@ def find_segments(beats, segment_length):
     Find segments of a given length in the list of beats.
     """
     segments = []
+    i = 0
     for i in range(0, len(beats) - segment_length, segment_length):
         start = beats[i]
         end = beats[i + segment_length]
         segments.append((i, start, end))
+
+    # Ensure the last segment is included if it has enough beats
+    i += segment_length
+    if len(beats) - i >= segment_length // 4:
+        segments.append((i, beats[i], beats[-1]))
     return segments
 
 
@@ -96,4 +110,4 @@ def segment_midi(midi_path, segments, mode):
 
 
 if __name__ == "__main__":
-    prepare_asap_dataset('raw/asap-dataset', 'data/ASAP')
+    prepare_asap_dataset('raw/asap-dataset', 'data/ASAP', segment_length=32)
