@@ -232,6 +232,8 @@ def collate_fn(batch):
         if len(x) < max_score_len else x
         for x in score_array
     ]
+    if max_score_len > MAX_SEQ_LEN:
+        score_array = [x[:MAX_SEQ_LEN] for x in score_array]
     score_data = torch.stack(score_array, dim=0).long()
 
     perf_array = [
@@ -239,6 +241,8 @@ def collate_fn(batch):
         if len(x) < max_perf_len else x
         for x in perf_array
     ]
+    if max_perf_len > MAX_SEQ_LEN:
+        perf_array = [x[:MAX_SEQ_LEN] for x in perf_array]
     perf_data = torch.stack(perf_array, dim=0).long()
     
     score_index = transform_inputs(score_data[..., 0], SEG_RES).long()
@@ -285,20 +289,29 @@ def test_samples():
     # dataset = PairedMIDIDatasetSanity(path_folder="data/formatted/ASAP", rid=0, 
     #                             task_type="midi_conversion", num_workers=0, modality="Performance")
     dataset = PairedMIDIDataset(path_folder="data/formatted/ASAP", rid=0, 
-                                task_type="midi_conversion", num_workers=1, validation=True)
+                                task_type="midi_conversion", num_workers=1, validation=False)
     dataloader = DataLoader(dataset, batch_size=16, collate_fn=collate_fn,
                             shuffle=True, num_workers=1, drop_last=True)
-
-    # batch = next(iter(dataloader))
+    
+    # Check the maximum sequence length in the dataloader
+    max_score_len, max_perf_len = 0, 0
+    cnt = 0
     for i, batch in enumerate(dataloader):
-        if i > 20:
-            break
+        # if i > 20:
+        #     break
         score_data = batch["ScoreLM"]["args"]["input_ids"]
         perf_data = batch["PerformanceLM"]["args"]["input_ids"]
-        print(f"Score Data Shape: {score_data.shape}, Performance Data Shape: {perf_data.shape}")
+        # print(f"Score Data Shape: {score_data.shape}, Performance Data Shape: {perf_data.shape}")
         score_indices = batch["ScoreLM"]["indices"]
         perf_indices = batch["PerformanceLM"]["indices"]
         # print(f"Score Indices Shape: {score_indices.shape}, Performance Indices Shape: {perf_indices.shape}")
+        max_score_len = max(max_score_len, score_data.shape[1])
+        max_perf_len = max(max_perf_len, perf_data.shape[1])
+
+        if score_data.shape[1] > MAX_SEQ_LEN or perf_data.shape[1] > MAX_SEQ_LEN:
+            print(f"Warning: Sequence length exceeds {MAX_SEQ_LEN} in batch {i}. "
+                  f"Score length: {score_data.shape[1]}, Performance length: {perf_data.shape[1]}")
+            cnt += 1
 
         score_tasks = batch["ScoreLM"]["tasks"]
         perf_tasks = batch["PerformanceLM"]["tasks"]
@@ -315,7 +328,8 @@ def test_samples():
         # print(f"Max Score Indices: {score_indices.max()}, Max Performance Indices: {perf_indices.max()}")
         assert score_indices.max() < 10000
         assert perf_indices.max() < 10000
-    
+    print(f"Max Score Length: {max_score_len}, Max Performance Length: {max_perf_len}")
+    print(f"Number of batches {cnt} / {len(dataloader)} with sequence length exceeding {MAX_SEQ_LEN}")
 
 def test():
     dataset = PairedMIDIDataset(path_folder="data/formatted/ASAP", rid=0, 
