@@ -10,6 +10,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from tqdm import tqdm
+from warmup_scheduler import GradualWarmupScheduler
+
 from shoelace.actual_shoelace.midi_data_loader_new import PairedMIDIDataset, PairedMIDIDatasetSanity
 from shoelace.actual_shoelace.midi_data_loader_new import collate_fn, worker_init_fn
 from shoelace.actual_shoelace.midi_shoelace import Shoelace
@@ -143,7 +145,27 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
 
 def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, epochs, suffix, rank, world_size):
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
-    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
+
+    steps_per_epoch = len(dataloader)
+    warmup_epoch = 0.01
+    min_lr = 0.1 * learning_rate
+
+    # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
+    base_scheduler = torch.optim.lr_scheduler.LinearLR(
+        optimizer,
+        start_factor=1.0,
+        end_factor=min_lr / learning_rate,
+        total_iters=int(steps_per_epoch * (epochs - warmup_epoch))
+    )
+
+    scheduler = GradualWarmupScheduler(
+        optimizer,
+        multiplier=1.0,
+        total_epoch=int(warmup_epoch * steps_per_epoch),
+        after_scheduler=base_scheduler
+    )
+
+    scaler = torch.amp.GradScaler('cuda')
     
     writer = None
     if rank == 0: # Only initialize SummaryWriter on rank 0
@@ -180,10 +202,30 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
         for batch in tqdm(dataloader, desc=f"Epoch {epoch}/{epochs}", disable=(rank!= 0)): # Disable tqdm for non-rank 0 processes
             batch = move_to_device(batch, device)
             optimizer.zero_grad()
-            loss_dict = model(batch)
-            loss = sum([loss_dict[k] for k in loss_dict])
-            loss.backward()
-            optimizer.step()
+
+            with torch.amp.autocast('cuda', dtype=torch.float16):
+                loss_dict = model(batch)
+                loss = sum([loss_dict[k] for k in loss_dict])
+            
+             # Use GradScaler for mixed precision
+            scaler.scale(loss).backward()
+
+            # Unscale gradients and clip them
+            scaler.unscale_(optimizer)
+            grad = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0, norm_type=2)
+            lr = scheduler.get_last_lr()[0]
+
+            # Step the optimizer
+            scaler.step(optimizer)
+            scaler.update()
+
+            # Step the scheduler
+            scheduler.step()
+
+            # loss_dict = model(batch)
+            # loss = sum([loss_dict[k] for k in loss_dict])
+            # loss.backward()
+            # optimizer.step()
 
             step += 1
             n_element += 1
@@ -191,6 +233,8 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
             if rank == 0: # Only log loss on rank 0
                 for k in loss_dict:
                     writer.add_scalar(f"loss_{k}", loss_dict[k].item(), step)
+                    writer.add_scalar("grad", grad, step)
+                    writer.add_scalar("lr", lr, step)
 
             total_loss += loss.item()
             del_batch(batch)
@@ -217,7 +261,7 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
                 eval_loss = evaluate(model, val_dataloader, epoch, step, device, rank)
                 writer.add_scalar("eval/loss", eval_loss, step)
                 print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
-        scheduler.step()
+        # scheduler.step()
     
     # Final evaluation and saving only on rank 0
     epoch += 1
