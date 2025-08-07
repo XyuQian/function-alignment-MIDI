@@ -17,8 +17,7 @@ from shoelace.actual_shoelace.midi_config import MODEL_FACTORY, TASKS, MODEL_MAP
 
 # os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-def get_dataset(rid, batch_size, task_type, validation=False, rank=0, world_size=1):
-    num_workers = 4 # You might need to tune this based on your CPU cores and data loading complexity
+def get_dataset(rid, batch_size, task_type, num_workers, validation=False, rank=0, world_size=1):
     dataset = PairedMIDIDataset(
         validation=validation,
         path_folder="data/formatted/ASAP",
@@ -144,6 +143,7 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
 def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, epochs, suffix, rank, world_size):
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
     scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
+    scaler = torch.amp.GradScaler('cuda')
     
     writer = None
     if rank == 0: # Only initialize SummaryWriter on rank 0
@@ -180,10 +180,19 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
         for batch in tqdm(dataloader, desc=f"Epoch {epoch}/{epochs}", disable=(rank!= 0)): # Disable tqdm for non-rank 0 processes
             batch = move_to_device(batch, device)
             optimizer.zero_grad()
-            loss_dict = model(batch)
-            loss = sum([loss_dict[k] for k in loss_dict])
-            loss.backward()
-            optimizer.step()
+
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
+                loss_dict = model(batch)
+                loss = sum([loss_dict[k] for k in loss_dict])
+            
+            scaler.scale(loss).backward()
+            scaler.step(optimizer)
+            scaler.update()
+
+            # loss_dict = model(batch)
+            # loss = sum([loss_dict[k] for k in loss_dict])
+            # loss.backward()
+            # optimizer.step()
 
             step += 1
             n_element += 1
@@ -284,8 +293,8 @@ def main(args):
         model = DDP(model, device_ids=[rank])
     
     # Get datasets and dataloaders
-    _, dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, rank=rank, world_size=world_size)
-    _, val_dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, validation=True, rank=rank, world_size=world_size)
+    _, dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, num_workers=args.num_workers, rank=rank, world_size=world_size)
+    _, val_dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, num_workers=args.num_workers, validation=True, rank=rank, world_size=world_size)
 
     train(
         model,
@@ -316,6 +325,7 @@ if __name__ == "__main__":
     parser.add_argument('--learning_rate', type=float, required=True, help='learning rate')
     parser.add_argument('--epochs', type=int, required=True, help='number of epochs')
     parser.add_argument('--suffix', type=str, required=True, help='suffix for model saving')
+    parser.add_argument('--num_workers', type=int, required=True, help='number of workers for DataLoader')
     parser.add_argument('--experiment_folder', type=str, required=True, help='folder to save the experiment')
     parser.add_argument('--exp_name', type=str, required=True, help='name of the experiment')
     parser.add_argument('--task_type', type=str, required=True, help='task type for the model')
