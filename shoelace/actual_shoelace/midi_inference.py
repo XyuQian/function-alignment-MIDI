@@ -135,52 +135,7 @@ class InferenceHelper:
             device=self.device
         )
         print("Score generation shape:", score_gen.shape)
-        score_lm = self.model.model_dict["ScoreLM"]["model_obj"]
-        perf_lm = self.model.model_dict["PerformanceLM"]["model_obj"]
 
-        # score_lm.set_use_generator(True)
-        # score_cache = score_lm.get_cache()
-        # model_gen = score_lm.inference(
-        #     input_ids=None,
-        #     max_len=max_gen_len,
-        #     top_k=top_k,
-        #     last_chunk=True,
-        #     batch_size=len(input_ids),
-        #     device=self.device
-        # )
-        # adapter = self.model.model_dict["PerformanceLM"]["adapter"]
-        # cond_indices = score_index
-        # for i in range(2333333):
-        #     main_indices = next(model_gen)
-        #     if "output" in main_indices:
-        #         break
-        #     main_indices = main_indices["index"]
-
-        #     for j in range(12):
-        #         hidden_a = next(model_gen)
-        #         hidden_b = score_cache[j]
-        #         adapter_output = adapter(
-        #             layer_idx=j,
-        #             hidden_a=hidden_a[0], 
-        #             hidden_b=hidden_b,
-        #             indices_a=main_indices,
-        #             indices_b=cond_indices,
-        #             tasks=[tasks[1]],
-        #             attn_mask=None
-        #         )
-        #         hidden_a[0]["attn_output"] = adapter_output
-
-        # perf_codes = main_indices["output"]
-
-        # Use PerformanceLM to generate performance 
-        # perf_codes = score_lm.inference(
-        #     input_ids=None,
-        #     max_len=max_gen_len,
-        #     top_k=top_k,
-        #     last_chunk=True,
-        #     batch_size=len(input_ids),
-        #     device=self.device
-        # )
         perf_codes = self.model.inference(
             model_name="PerformanceLM",
             cond_model_name="ScoreLM",
@@ -220,51 +175,6 @@ class InferenceHelper:
         )
         print("Performance generation shape:", perf_gen.shape)
 
-        score_lm = self.model.model_dict["ScoreLM"]["model_obj"]
-        perf_lm = self.model.model_dict["PerformanceLM"]["model_obj"]
-
-        # perf_lm.set_use_generator(True)
-        # perf_cache = perf_lm.get_cache()
-        # model_gen = perf_lm.inference(
-        #     input_ids=None,
-        #     max_len=max_gen_len,
-        #     top_k=top_k,
-        #     last_chunk=True,
-        #     batch_size=len(input_ids),
-        #     device=self.device
-        # )
-        # adapter = self.model.model_dict["ScoreLM"]["adapter"]
-        # cond_indices = perf_index
-        # for i in range(2333333):
-        #     main_indices = next(model_gen)
-        #     if "output" in main_indices:
-        #         break
-        #     main_indices = main_indices["index"]
-        #     for j in range(12):
-        #         hidden_a = next(model_gen)
-        #         hidden_b = perf_cache[j]
-        #         adapter_output = adapter(
-        #             layer_idx=j,
-        #             hidden_a=hidden_a[0], 
-        #             hidden_b=hidden_b,
-        #             indices_a=main_indices,
-        #             indices_b=cond_indices,
-        #             tasks=[tasks[1]],
-        #             attn_mask=None
-        #         )
-        #         hidden_a[0]["attn_output"] = adapter_output
-        
-        # score_codes = main_indices["output"]
-
-        # Use ScoreLM to generate score codes
-        # score_codes = perf_lm.inference(
-        #     input_ids=None,
-        #     max_len=max_gen_len,
-        #     top_k=top_k,
-        #     last_chunk=True,
-        #     batch_size=len(input_ids),
-        #     device=self.device
-        # )
         score_codes = self.model.inference(
             model_name="ScoreLM",
             cond_model_name="PerformanceLM",
@@ -310,116 +220,23 @@ class InferenceHelper:
         )
         
         return score_gen, perf_gen
-        
-    # @torch.no_grad()
-    # def score_2_perf(self, input_ids_generator, chunk_frame, hop_frame, top_k, tasks):
-    #     perf_prompt = None
-    #     n_id = 0
-    #     results = []
-    #     chunk_len = chunk_frame // SEG_RES
-    #     hop_len = hop_frame // SEG_RES
-
-    #     for input_ids, score_index in input_ids_generator:
-    #         if score_index is None:
-    #             break
-    #         # print(input_ids)
-    #         # print(score_index)
-    #         self.model.inference(
-    #             model_name="ScoreLM", 
-    #             cond_model_name="PerformLM",
-    #             max_len=int((input_ids[0, :, 0] == SEG_RES).sum()),
-    #             reset_cond_cache=True,
-    #             use_generator=True, top_k=16, 
-    #             last_chunk=True, input_ids=input_ids, 
-    #             tasks=[tasks[0]],
-    #             device=input_ids.device
-    #         )
-
-    #         perf_codes = self.model.inference(
-    #             model_name="PerformanceLM", 
-    #             cond_model_name="ScoreLM", 
-    #             max_len=chunk_len - 2,
-    #             reset_cond_cache=False,
-    #             use_generator=True, top_k=top_k,
-    #             last_chunk=False, input_ids=perf_prompt, cond_indices=score_index,
-    #             batch_size=len(input_ids), 
-    #             tasks=[tasks[1]],
-    #             device=input_ids.device
-    #         )
-
-    #         prefix, perf_prompt = cut_midi(perf_codes.squeeze(0), hop_len, chunk_len - 2)
-    #         results.append(prefix.unsqueeze(0))
-    #         perf_prompt = perf_prompt.unsqueeze(0)
-            
-            
-    #         n_id += 1
-            
-            
-    #     results.append(perf_prompt)
-    #     perf_codes = torch.concat(results, 1)
-    #     return perf_codes, input_ids
-
-
-    # @torch.no_grad()
-    # def perf_2_score(self, input_ids_generator, chunk_frame, hop_frame, top_k, tasks):
-    #     score_prompt = None
-    #     n_id = 0
-    #     chunk_len = chunk_frame // SEG_RES
-    #     hop_len = hop_frame // SEG_RES
-    #     results = []
-    #     for input_ids, perf_index in input_ids_generator:
-    #         if perf_index is None:
-    #             break
-    #         self.model.inference(
-    #             model_name="PerformanceLM", cond_model_name="ScoreLM",
-    #             max_len=int((input_ids[0, :, 0] == SEG_RES).sum()), 
-    #             reset_cond_cache=True,
-    #             use_generator=True, top_k=top_k, 
-    #             last_chunk=True, input_ids=input_ids, 
-    #             tasks=[tasks[0]],
-    #             device=input_ids.device
-    #         )
-
-
-    #         score_codes = self.model.inference(
-    #             model_name="ScoreLM", cond_model_name="PerformanceLM", 
-    #             max_len=chunk_len - 2,
-    #             reset_cond_cache=False,
-    #             use_generator=True, top_k=top_k, 
-    #             last_chunk=False, input_ids=score_prompt, 
-    #             cond_indices=perf_index,
-    #             tasks=[tasks[1]], 
-    #             batch_size=len(input_ids), 
-    #             device=input_ids.device
-    #         )
-
-    #         prefix, score_prompt = cut_midi(score_codes.squeeze(0), hop_len, chunk_len - 2)
-    #         results.append(prefix.unsqueeze(0))
-    #         score_prompt = score_prompt.unsqueeze(0)
-            
-    #         n_id += 1
-            
-        
-    #     results.append(remove_head(score_prompt))
-    #     score_codes = torch.concat(results, 1)
-    #     return score_codes, input_ids
-
 
 
 if __name__=="__main__":
-    inference_helper_score2perf = InferenceHelper(
-        model_folder="exp/midi_conversion/latest_100_end_score_2_perf", 
-        device=torch.device("cuda"),
-        n_prompts=5,
-        task_type="midi_conversion",
-        mask_config={
-            "ScoreLM": False,
-            "PerformanceLM": True
-        }
-    )
+    # inference_helper_score2perf = InferenceHelper(
+    #     model_folder="exp/midi_conversion/latest_100_end_score_2_perf", 
+    #     device=torch.device("cuda"),
+    #     n_prompts=5,
+    #     task_type="midi_conversion",
+    #     mask_config={
+    #         "ScoreLM": False,
+    #         "PerformanceLM": True
+    #     }
+    # )
     
     inference_helper_perf2score = InferenceHelper(
-        model_folder="exp/midi_conversion/latest_100_end_perf_2_score",
+        model_folder="exp/perf_2_score_bs32_ep100_mask0.2_estop/latest_20_6153_perf_2_score",
+        # model_folder="exp/perf_2_score_bs64_ep50_mask0.5/latest_50_end_perf_2_score",
         device=torch.device("cuda"),
         n_prompts=5,
         task_type="midi_conversion",
@@ -431,7 +248,7 @@ if __name__=="__main__":
 
 
     # Example usage
-    fname = "001_002"
+    fname = "001_001"
     # fname = "2"
     # score_data_generator = get_midi_data(
     #     path=f"data/ASAP/ASAP_samples/Score/{fname}.mid", 
@@ -446,23 +263,23 @@ if __name__=="__main__":
     #     device=torch.device("cuda")
     # )
 
-    print(f"\n********** Score to Performance for {fname} ***********")
-    perf_codes, score_gen = inference_helper_score2perf.score_2_perf(
-        midi_path=f"data/ASAP/Score/{fname}.mid",
-        # midi_path=f"data/{fname}.midi",
-        max_gen_len=128,
-        top_k=1, 
-        tasks=['generate_score', 'generate_performance']
-    )
-    print(perf_codes.shape, score_gen.shape)
-    print()
+    # print(f"\n********** Score to Performance for {fname} ***********")
+    # perf_codes, score_gen = inference_helper_score2perf.score_2_perf(
+    #     midi_path=f"data/ASAP/Score/{fname}.mid",
+    #     # midi_path=f"data/{fname}.midi",
+    #     max_gen_len=128,
+    #     top_k=1, 
+    #     tasks=['generate_score', 'generate_performance']
+    # )
+    # print(perf_codes.shape, score_gen.shape)
+    # print()
 
     print(f"********** Performance to Score for {fname} ***********")
     score_codes, perf_gen = inference_helper_perf2score.perf_2_score(
         midi_path=f"data/ASAP/Performance/{fname}.mid",
         # midi_path=f"data/{fname}.midi",
         max_gen_len=128,
-        top_k=1, 
+        top_k=4, 
         tasks=['generate_performance', 'generate_score']
     )
     print(score_codes.shape, perf_gen.shape)
@@ -473,7 +290,7 @@ if __name__=="__main__":
 
     # decode(os.path.join("inference_results", f"sanity_{fname}_score_gen.mid"), score_gen[0].cpu().numpy())
     # decode(os.path.join("inference_results", f"sanity_{fname}_perf_gen.mid"), perf_gen[0].cpu().numpy())
-    decode(os.path.join("inference_results", f"{fname}_score_2_perf.mid"), perf_codes[0].cpu().numpy())
+    # decode(os.path.join("inference_results", f"{fname}_score_2_perf.mid"), perf_codes[0].cpu().numpy())
     decode(os.path.join("inference_results", f"{fname}_perf_2_score.mid"), score_codes[0].cpu().numpy())
 
     # decode(os.path.join("inference_results", f"with_prompt_{fname}_score_2_perf.mid"), perf_codes[0].cpu().numpy())

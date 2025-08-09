@@ -10,7 +10,8 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 
 from tqdm import tqdm
-from warmup_scheduler import GradualWarmupScheduler
+from datetime import datetime
+from transformers import get_cosine_schedule_with_warmup
 
 from shoelace.actual_shoelace.midi_data_loader_new import PairedMIDIDataset, PairedMIDIDatasetSanity
 from shoelace.actual_shoelace.midi_data_loader_new import collate_fn, worker_init_fn
@@ -145,23 +146,14 @@ def save_model(model, writer, eval_loss, mean_loss, model_dir, step, e, i, min_l
 def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, epochs, suffix, rank, world_size):
     optimizer = torch.optim.AdamW(model.parameters(), lr=learning_rate)
 
-    steps_per_epoch = len(dataloader)
-    warmup_epoch = 0.01
-    min_lr = 0.1 * learning_rate
-
     # scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.98)
-    base_scheduler = torch.optim.lr_scheduler.LinearLR(
-        optimizer,
-        start_factor=1.0,
-        end_factor=min_lr / learning_rate,
-        total_iters=int(steps_per_epoch * (epochs - warmup_epoch))
-    )
+    num_training_steps = epochs * len(dataloader)
+    num_warmup_steps = int(num_training_steps * 0.01)
 
-    scheduler = GradualWarmupScheduler(
+    scheduler = get_cosine_schedule_with_warmup(
         optimizer,
-        multiplier=1.0,
-        total_epoch=int(warmup_epoch * steps_per_epoch),
-        after_scheduler=base_scheduler
+        num_warmup_steps=num_warmup_steps,
+        num_training_steps=num_training_steps
     )
 
     scaler = torch.amp.GradScaler('cuda')
@@ -171,6 +163,8 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
         writer = SummaryWriter(model_dir, flush_secs=20)
 
     step = 0
+    patience = 2  # Stop after 2 evaluation cycles (10 epochs) with no improvement
+    patience_counter = 0
     min_loss = float("inf")
 
     # Initial evaluation and saving only on rank 0
@@ -202,7 +196,7 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
             batch = move_to_device(batch, device)
             optimizer.zero_grad()
 
-            with torch.amp.autocast('cuda', dtype=torch.float16):
+            with torch.amp.autocast('cuda', dtype=torch.bfloat16):
                 loss_dict = model(batch)
                 loss = sum([loss_dict[k] for k in loss_dict])
             
@@ -232,7 +226,7 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
             if rank == 0: # Only log loss on rank 0
                 for k in loss_dict:
                     writer.add_scalar(f"loss_{k}", loss_dict[k].item(), step)
-                    writer.add_scalar("grad", grad, step)
+                    # writer.add_scalar("grad", grad, step)
                     writer.add_scalar("lr", lr, step)
 
             total_loss += loss.item()
@@ -255,21 +249,58 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
 
         avg_loss = total_loss / total_batches_across_world if total_batches_across_world > 0 else 0
         
-        if rank == 0: # Only log/print on rank 0
-            if epoch % 5 == 0:
-                eval_loss = evaluate(model, val_dataloader, epoch, step, device, rank)
+        stop_training = False
+        if epoch % 5 == 0:
+            eval_loss = evaluate(model, val_dataloader, epoch, step, device, rank)
+
+            if rank == 0: # Only log/print on rank 0
                 writer.add_scalar("eval/loss", eval_loss, step)
                 print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
-        # scheduler.step()
+            
+                # --- Early Stopping Logic (on Rank 0) ---
+                if eval_loss < min_loss:
+                    min_loss = eval_loss
+                    patience_counter = 0
+                    print(f"✅ New best validation loss: {min_loss:.4f}.")
+                    # Use your save_model logic, but ensure it saves the 'best' model here
+                    min_loss = save_model(model, writer, eval_loss, avg_loss / n_element, model_dir, step, epoch, step, min_loss, suffix, rank)
+                else:
+                    patience_counter += 1
+                    print(f"⚠️ Validation loss did not improve. Patience: {patience_counter}/{patience}")
+
+                if patience_counter >= patience:
+                    print(f"🛑 Stopping early after {patience} evaluation cycles with no improvement.")
+                    print("Training complete.")
+                    print(f"✅ Best validation loss: {min_loss:.4f}. Saving best model.")
+                    stop_training = True
+        
+        # print(f"Rank {rank} - Epoch {epoch}, Avg Loss: {avg_loss:.4f}, Step: {step}")
+        
+        # --- DDP Synchronization ---
+        # Ensures other ranks wait for rank 0 to finish saving before proceeding.
+        if world_size > 1:
+            dist.barrier()
+        # Broadcast the stop signal from rank 0 to all other processes
+        if world_size > 1:
+            stop_tensor = torch.tensor(1.0 if stop_training else 0.0, device=device)
+            dist.broadcast(stop_tensor, src=0)
+            if stop_tensor.item() == 1.0:
+                break # All processes break the loop together
+        elif stop_training: # For single-GPU case
+            break
+
     
     # Final evaluation and saving only on rank 0
-    epoch += 1
-    if rank == 0:
+    if not stop_training:
+        epoch += 1
         eval_loss = evaluate(model, val_dataloader, epoch, "end", device, rank)
-        writer.add_scalar("eval/loss", eval_loss, step)
-        print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
-        print("Training complete.")
-        min_loss = save_model(model, writer, eval_loss, avg_loss / n_element, model_dir, step, epoch, "end", min_loss, suffix, rank)
+        if rank == 0:
+            print("Final evaluation...")
+            writer.add_scalar("eval/loss", eval_loss, step)
+            print(f"Epoch {epoch}/{epochs}, Loss: {avg_loss:.4f}, Eval Loss: {eval_loss:.4f}")
+            print("Training complete.")
+            min_loss = save_model(model, writer, eval_loss, avg_loss / n_element, model_dir, step, epoch, "end", min_loss, suffix, rank)
+            print(f"✅ Best validation loss: {min_loss:.4f}. Saving best model.")
     
     # Clean up DDP processes
     if world_size > 1:
@@ -277,8 +308,12 @@ def train(model, dataloader, val_dataloader, device, model_dir, learning_rate, e
 
 
 def main(args):
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    hparam_str = f"bs{args.batch_size}_ep{args.epochs}_mask{0.2}_estop"
+    experiment_name = f"{args.exp_name}_{hparam_str}"
+
     experiment_folder = args.experiment_folder
-    experiment_name = args.exp_name
+    # experiment_name = args.exp_name
     model_dir = os.path.join(experiment_folder, experiment_name)
 
     # DDP setup
@@ -327,8 +362,21 @@ def main(args):
         model = DDP(model, device_ids=[rank])
     
     # Get datasets and dataloaders
-    _, dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, num_workers=args.num_workers, rank=rank, world_size=world_size)
-    _, val_dataloader = get_dataset(rid=0, batch_size=args.batch_size, task_type=args.task_type, num_workers=args.num_workers, validation=True, rank=rank, world_size=world_size)
+    _, dataloader = get_dataset(
+        rid=0, 
+        batch_size=args.batch_size, 
+        task_type=args.task_type, 
+        num_workers=args.num_workers, 
+        rank=rank, world_size=world_size
+    )
+    _, val_dataloader = get_dataset(
+        rid=0, 
+        batch_size=args.batch_size, 
+        task_type=args.task_type, 
+        num_workers=args.num_workers, 
+        validation=True, 
+        rank=rank, world_size=world_size
+    )
 
     train(
         model,
